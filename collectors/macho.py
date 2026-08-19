@@ -34,6 +34,11 @@ _INTERESTING_RE = re.compile(
     r"com\.apple\.opendirectoryd|com\.apple\.installer|com\.apple\.network)"
 )
 
+# Bundle-identifier-shaped strings (``com.apple.foo.bar``). A binary that names a
+# Mach service is a candidate client of it, which is the only honest way to draw
+# a client edge in the trust-boundary graph from static data.
+_IDENTIFIER_RE = re.compile(r"^[a-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$")
+
 _MAX_STRINGS = 4000
 
 
@@ -174,7 +179,7 @@ def _interesting_strings(path: str) -> List[str]:
     out: List[str] = []
     for line in res.stdout.splitlines():
         line = line.strip()
-        if _INTERESTING_RE.search(line):
+        if _INTERESTING_RE.search(line) or _IDENTIFIER_RE.match(line):
             out.append(line)
             if len(out) >= _MAX_STRINGS:
                 break

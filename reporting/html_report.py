@@ -317,6 +317,9 @@ tbody tr.active { background: rgba(255,176,32,.1); box-shadow: inset 2px 0 0 var
 .vtable .vmark { width: 18px; color: var(--lime); }
 .vtable tr.unseen .vmark { color: var(--text-3); }
 .vtable .vw { color: var(--signal); width: 42px; }
+.hoodsvg { width: 100%; max-height: none; margin-top: 6px; }
+.hoodsvg .gl { font-family: var(--mono); font-size: 10.5px; fill: var(--text); }
+.hoodsvg .gs { font-family: var(--mono); font-size: 9px; fill: var(--text-3); }
 .looked { display: block; color: var(--text-3); font-size: 10.5px; }
 .dim { color: var(--text-3); }
 .empty { padding: 40px; text-align: center; color: var(--text-3); }
@@ -486,6 +489,7 @@ const PRIOS = ["HIGH", "MEDIUM", "LOW", "INFO"];
 const PCOL = { HIGH: "#ff6b5e", MEDIUM: "#ffb020", LOW: "#4fd6e0", INFO: "#6b7787" };
 const LCOL = { FACT: "#8fd14f", HEURISTIC: "#ffb020", UNKNOWN: "#6b7787" };
 const CONF = { HIGH: 1, MEDIUM: .55, LOW: .25 };
+const VCLASSES = REPORT.validation_classes || {};
 const VCOL = { STRONG: "#8fd14f", MEDIUM: "#ffb020", WEAK: "#4fd6e0", NONE_OBSERVED: "#6b7787" };
 const NS = "http://www.w3.org/2000/svg";
 
@@ -531,6 +535,7 @@ const T = (REPORT.targets || []).map((t, i) => {
     conf: Object.fromEntries((t.sink_assessments || []).map(a => [a.label, a.confidence])),
     validation: t.validation || "NONE_OBSERVED",
     vassess: t.validation_assessment || null,
+    hood: t.neighbourhood || null,
     ipc: t.ipc_classification || "unknown",
     scope: svc.scope || "",
     platform: cs.platform_binary,
@@ -836,6 +841,62 @@ function list(arr, fmt) {
   return `<ul>${arr.map(fmt || (x => `<li>${esc(x)}</li>`)).join("")}</ul>`;
 }
 
+/* ---------- trust-boundary neighbourhood ---------- */
+function neighbourhoodPanel(t) {
+  const h = t.hood;
+  if (!h || (!h.provides.length && !h.looks_up.length)) return "";
+  const inbound = h.provides.filter(p => p.clients.length);
+  const W = 700, ROW = 26, PAD = 12;
+  const rows = Math.max(1, inbound.reduce((n, p) => n + Math.max(1, Math.min(p.clients.length, 6)), 0));
+  const H = PAD * 2 + rows * ROW;
+  const colC = 208, colM = 300, colS = 470;   // clients | mach service | this service
+
+  let y = PAD + 14, svg = "";
+  inbound.forEach(p => {
+    const shown = p.clients.slice(0, 6);
+    const first = y;
+    shown.forEach(c => {
+      const colour = c.privileged ? "#ff6b5e" : "#4fd6e0";
+      svg += `<line x1="${colC}" y1="${y - 4}" x2="${colM}" y2="${y - 4}" stroke="${colour}" stroke-width="1"
+                ${c.evidence === "string" ? 'stroke-dasharray="3 3"' : ""} opacity=".55"/>`;
+      svg += `<text x="${colC - 8}" y="${y}" text-anchor="end" class="gl" fill="${colour}">${esc(c.label)}</text>`;
+      svg += `<text x="${colC - 8}" y="${y + 10}" text-anchor="end" class="gs">${esc(c.run_as)} · ${esc(c.evidence)}</text>`;
+      y += ROW;
+    });
+    if (p.clients.length > shown.length)
+      svg += `<text x="${colC - 8}" y="${y}" text-anchor="end" class="gs">+${p.clients.length - shown.length} more</text>`,
+      y += ROW;
+    const mid = (first + y) / 2 - 8;
+    svg += `<rect x="${colM}" y="${mid - 11}" width="150" height="20" rx="4" fill="rgba(169,139,255,.14)" stroke="#a98bff"/>`;
+    svg += `<text x="${colM + 75}" y="${mid + 3}" text-anchor="middle" class="gl" fill="#a98bff">${esc(shorten(p.mach, 22))}</text>`;
+    svg += `<line x1="${colM + 150}" y1="${mid - 1}" x2="${colS}" y2="${H / 2}" stroke="#ffb020" stroke-width="1" opacity=".55"/>`;
+  });
+  svg += `<rect x="${colS}" y="${H / 2 - 15}" width="180" height="30" rx="4" fill="rgba(255,176,32,.14)" stroke="#ffb020"/>`;
+  svg += `<text x="${colS + 90}" y="${H / 2 - 1}" text-anchor="middle" class="gl" fill="#ffb020">${esc(shorten(t.label, 24))}</text>`;
+  svg += `<text x="${colS + 90}" y="${H / 2 + 11}" text-anchor="middle" class="gs">${esc(t.user)} · validation ${esc(t.validation)}</text>`;
+
+  const out = h.looks_up.slice(0, 12);
+  return `
+    <h4>trust boundary &mdash; who reaches this service</h4>
+    ${inbound.length ? `<svg class="hoodsvg" viewBox="0 0 ${W} ${H}"><g>${svg}</g></svg>
+      <div class="dim" style="margin-top:4px">Solid line = the client's entitlement names this service
+        (Apple-declared). Dashed = the service name appears in the client binary.
+        <span style="color:#ff6b5e">red</span> = the client is root too,
+        <span style="color:#4fd6e0">cyan</span> = it crosses a privilege boundary.</div>`
+      : '<div class="dim">No client was observed naming this service.</div>'}
+    ${out.length ? `<div style="margin-top:12px"><b class="dim">this service names ${h.looks_up.length} other endpoint(s)</b>
+      <ul class="evlist">${out.map(o =>
+        `<li><span class="evkind">${o.privileged ? "root" : "user"}</span> <code>${esc(o.mach)}</code>
+         <span class="dim">${esc(o.provider)}${o.validation ? " · validation " + esc(o.validation) : ""} · ${esc(o.evidence)}</span></li>`).join("")}
+      ${h.looks_up.length > out.length ? `<li class="dim">+${h.looks_up.length - out.length} more</li>` : ""}</ul></div>` : ""}
+  `;
+}
+
+function shorten(s, n) {
+  s = String(s).replace(/^com\.apple\./, "…");
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
 function openDrawer(t) {
   if (!t) return;
   const r = t.raw, svc = r.service || {}, exe = r.executable || {}, cs = exe.codesign || {}, mo = exe.macho || {};
@@ -869,6 +930,8 @@ function openDrawer(t) {
   const libs = mo.linked_libs || [], strs = mo.interesting_strings || [], objc = mo.objc_classes || [];
 
   $("#d-body").innerHTML = `
+    ${neighbourhoodPanel(t)}
+
     <h4>launchd metadata</h4>
     ${kv([
       ["plist", `<code>${esc(svc.plist_path)}</code>`],
@@ -931,10 +994,13 @@ function openDrawer(t) {
           <td class="vmark">&#10003;</td><td>${esc(cls)}</td>
           <td class="vw">+${Math.max(...evs.map(e => e.weight))}</td>
           <td><code>${evs.map(e => esc(e.match)).join(", ")}</code></td></tr>`).join("")}
-      ${(t.vassess.not_observed || []).map(m => `<tr class="unseen">
+      ${(t.vassess.not_observed || []).map(m => {
+          const info = VCLASSES[m.class] || {};
+          return `<tr class="unseen">
           <td class="vmark">?</td><td>${esc(m.class)}</td>
-          <td class="vw">+${m.weight}</td>
-          <td class="dim">${esc(m.description)} <span class="looked">looked for: ${esc(m.looked_for)}</span></td></tr>`).join("")}
+          <td class="vw">+${m.weight ?? info.weight ?? 0}</td>
+          <td class="dim">${esc(info.description || "")} <span class="looked">looked for: ${esc(info.looked_for || "")}</span></td></tr>`;
+        }).join("")}
     </table>` : ""}
     <div class="dim" style="margin-top:8px">Static evidence only. It does not affect the score, and
       &ldquo;not observed&rdquo; is a statement about this scanner, not about the service.</div>
@@ -1091,6 +1157,70 @@ def _slim_macho(macho: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _neighbourhoods(graph: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Per-service trust-boundary neighbourhood, small enough to embed.
+
+    The full graph is far too big for the page, but the part that matters for one
+    target is tiny: which Mach services it provides, who names them, and which
+    services it names in turn.
+    """
+    nodes = {n["id"]: n for n in graph.get("nodes") or []}
+    provider_of: Dict[str, str] = {}
+    provides: Dict[str, List[str]] = {}
+    for edge in graph.get("edges") or []:
+        if edge.get("type") == "PROVIDES":
+            provider_of[edge["target"]] = edge["source"]
+            provides.setdefault(edge["source"], []).append(edge["target"])
+
+    exec_service = {n["id"]: (n.get("data") or {}).get("service")
+                    for n in nodes.values() if n.get("type") == "Executable"}
+
+    inbound: Dict[str, Dict[str, List[Dict[str, str]]]] = {}
+    outbound: Dict[str, List[Dict[str, Any]]] = {}
+    for edge in graph.get("edges") or []:
+        if edge.get("type") != "LOOKS_UP":
+            continue
+        mach_id, client_id = edge["target"], edge["source"]
+        evidence = (edge.get("data") or {}).get("evidence", "?")
+        client = nodes.get(client_id) or {}
+        cdata = client.get("data") or {}
+        provider_id = provider_of.get(mach_id)
+        mach_label = (nodes.get(mach_id) or {}).get("label", mach_id)
+
+        if provider_id:
+            entry = inbound.setdefault(provider_id, {}).setdefault(mach_label, [])
+            entry.append({
+                "label": exec_service.get(client_id) or client.get("label", client_id),
+                "run_as": cdata.get("run_as_user", "?"),
+                "privileged": bool(cdata.get("privileged")),
+                "evidence": evidence,
+            })
+
+        client_service = exec_service.get(client_id)
+        if client_service:
+            pdata = ((nodes.get(provider_id) or {}).get("data") or {}) if provider_id else {}
+            outbound.setdefault(f"service:{client_service}", []).append({
+                "mach": mach_label,
+                "provider": (nodes.get(provider_id) or {}).get("label", "") if provider_id else "",
+                "privileged": bool(pdata.get("privileged")),
+                "validation": pdata.get("validation", ""),
+                "evidence": evidence,
+            })
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for svc_id in set(list(inbound) + list(outbound) + list(provides)):
+        label = (nodes.get(svc_id) or {}).get("label")
+        if not label:
+            continue
+        out[label] = {
+            "provides": [{"mach": (nodes.get(m) or {}).get("label", m),
+                          "clients": inbound.get(svc_id, {}).get((nodes.get(m) or {}).get("label", m), [])}
+                         for m in provides.get(svc_id, [])],
+            "looks_up": outbound.get(svc_id, []),
+        }
+    return out
+
+
 def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
     """Strip the payload down to what the HTML actually shows."""
     out = {k: v for k, v in report.items() if k not in ("targets", "graph")}
@@ -1099,6 +1229,19 @@ def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
         "nodes": len(graph.get("nodes") or []),
         "edges": len(graph.get("edges") or []),
     }
+    hoods = _neighbourhoods(graph)
+
+    # Every target lists the validation classes it lacks, with identical prose.
+    # Hoist that into one table and leave the per-target rows as class + weight.
+    classes: Dict[str, Dict[str, Any]] = {}
+    for t in report.get("targets") or []:
+        for miss in ((t.get("validation_assessment") or {}).get("not_observed") or []):
+            classes.setdefault(miss.get("class", ""), {
+                "weight": miss.get("weight", 0),
+                "description": miss.get("description", ""),
+                "looked_for": miss.get("looked_for", ""),
+            })
+    out["validation_classes"] = classes
     targets = []
     for t in report.get("targets") or []:
         t2 = dict(t)
@@ -1109,6 +1252,14 @@ def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
         # research_leads is usually a verbatim copy of why_interesting
         if t2.get("research_leads") == t2.get("why_interesting"):
             t2.pop("research_leads", None)
+        va = t2.get("validation_assessment")
+        if va and va.get("not_observed"):
+            va = dict(va)
+            va["not_observed"] = [{"class": m.get("class")} for m in va["not_observed"]]
+            t2["validation_assessment"] = va
+        hood = hoods.get(t2.get("label"))
+        if hood and (hood["provides"] or hood["looks_up"]):
+            t2["neighbourhood"] = hood
         targets.append(t2)
     out["targets"] = targets
     return out
@@ -1116,7 +1267,7 @@ def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
 
 def write_html_report(path: str, report: Dict[str, Any]) -> None:
     """Render *report* to a self-contained HTML file at *path*."""
-    data = _json_dumps(_view_model(report)).replace("</", "<\\/")
+    data = _json_dumps(_view_model(report), indent=None).replace("</", "<\\/")
     html = _TEMPLATE.replace("__REPORT_JSON__", data)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:

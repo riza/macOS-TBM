@@ -135,6 +135,11 @@ python3 tbm.py scan --graph
 # Export the last report as one file per entity (CSV + Markdown)
 python3 tbm.py export
 
+# Query the trust-boundary graph
+python3 tbm.py graph --boundaries --validation NONE_OBSERVED --min-score 90
+python3 tbm.py graph --node com.apple.diskimagesiod.spb --depth 2
+python3 tbm.py graph --path com.apple.someagent com.apple.somedaemon
+
 # Filter by entitlement substring
 python3 tbm.py scan --entitlement com.apple.private.tcc
 
@@ -216,6 +221,40 @@ macos-tbm/
 
 ---
 
+## Querying the graph
+
+The whole graph is 8,000 nodes; research asks narrow questions. `tbm graph`
+answers them against the last report:
+
+```bash
+# Where can a non-root client reach a root daemon that shows no caller checks?
+python3 tbm.py graph --boundaries --validation NONE_OBSERVED --validation WEAK --min-score 90
+
+# What surrounds one entity (service, binary or Mach service)?
+python3 tbm.py graph --node com.apple.diskimagesiod.spb --depth 2
+
+# How does this agent reach that daemon?
+python3 tbm.py graph --path com.apple.ManagedClientAgent.agent com.apple.ManagedClient
+
+# Feed a slice to Graphviz
+python3 tbm.py graph --node com.apple.mobileactivationd --depth 2 --format dot --output n.dot
+dot -Tsvg n.dot -o n.svg
+```
+
+`--boundaries` is the query the tool exists for — every place something less
+trusted names an endpoint something more trusted answers on:
+
+```
+MACH SERVICE                                  PROVIDER              SCORE VALIDATION    CLIENT
+com.apple.icloud.searchpartyd.beaconmanager   ...searchpartyd         113 NONE_OBSERVED com.apple.assistant_service [entitlement]
+com.apple.mobileactivationd                   ...mobileactivationd    111 NONE_OBSERVED com.apple.BTServer.cloudpairing [entitlement]
+```
+
+The dashboard shows the same relationship per target: who names this service,
+by what evidence, and whether that client crosses a privilege boundary.
+
+---
+
 ## Trust-boundary model
 
 Nodes:
@@ -234,15 +273,30 @@ Edges:
 | `PROVIDES`          | LaunchService → MachService  | job registers the Mach service   |
 | `LAUNCHED_BY`       | Executable → LaunchService   | executable is launched by job    |
 | `LINKS_TO`          | Executable → Framework       | binary links the library         |
-| `CONNECTS_TO`       | Framework → MachService      | library correlates to a service  |
+| `LOOKS_UP`          | Executable → MachService     | client names the service (see below) |
 | `HAS_ENTITLEMENT`   | Executable → Entitlement     | binary carries the entitlement   |
 | `ACCESSES_SUBSYSTEM`| Executable → Subsystem       | binary touches a sensitive sink  |
 
-The `CONNECTS_TO` edge encodes the research relationship you care about:
+`LOOKS_UP` is the edge that makes this a *trust-boundary* graph, and it is only
+drawn where there is evidence:
+
+- **`evidence=entitlement`** — the client carries
+  `com.apple.security.exception.mach-lookup.global-name` naming that service.
+  Apple declared the relationship; it is authoritative.
+- **`evidence=string`** — the service name appears verbatim in the client binary,
+  which is what a `bootstrap_look_up` call site looks like from the outside.
+
+Never to a service the job provides itself, and never to a name no job provides.
 
 ```
-Client / Framework  ──CONNECTS_TO──▶  XPC/Mach service  ──PROVIDES──▶  Daemon  ──ACCESSES──▶  Subsystem
+Client ──LOOKS_UP──▶ XPC/Mach service ◀──PROVIDES── Daemon ──ACCESSES──▶ Subsystem
 ```
+
+> An earlier version drew `CONNECTS_TO` from every framework a job linked to
+> every Mach service *the same job* provided — 59,671 edges asserting things like
+> "CloudTelemetry.framework connects to com.apple.security.syspolicy" purely
+> because syspolicyd links CloudTelemetry. Those edges were fiction and are gone;
+> the graph is now 38,669 edges, of which 2,050 are evidence-backed client edges.
 
 ---
 
@@ -329,6 +383,7 @@ python3 tbm.py export --no-dossiers         # skip the per-service Markdown file
 | `frameworks.csv` | linked library — how many jobs link it, weak links |
 | `sinks.csv` | (service, sink) — confidence, evidence score, aspects |
 | `sink_evidence.csv` | **every observation behind every label** — kind, aspect, weight, matched symbol |
+| `boundary_crossings.csv` | a non-root client naming a root daemon's Mach service |
 | `caller_validation.csv` | (service, validation class) — observed and *not* observed |
 | `findings.csv` | finding, with its FACT / HEURISTIC / UNKNOWN level |
 | `score_reasons.csv` | scoring contribution |

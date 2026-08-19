@@ -8,6 +8,14 @@ All notable changes to macOS-TBM are documented here. This project follows
 
 ### Added
 
+- **`tbm graph`** queries the trust-boundary graph instead of dumping it:
+  `--node` for a neighbourhood, `--path A B` for the routes between two
+  entities, `--boundaries` for every non-root client naming a root daemon's
+  Mach service (filterable by provider score and validation grade), in text,
+  DOT, Mermaid or JSON.
+- The dashboard shows the same relationship per target: which clients name this
+  service, by what evidence, and whether they cross a privilege boundary.
+- `boundary_crossings.csv` joins the export.
 - **`tbm export`** flattens a report into one CSV and Markdown table per entity
   (services, executables, Mach services, entitlements, frameworks, sinks, sink
   evidence, caller validation, findings, score reasons, graph nodes and edges),
@@ -80,6 +88,17 @@ All notable changes to macOS-TBM are documented here. This project follows
 - Renamed to **macOS-TBM**; the CLI entry point is now `tbm.py`.
 
 ### Fixed
+
+- **The graph's client edges were fiction.** `CONNECTS_TO` was drawn from every
+  framework a job linked to every Mach service *the same job* provided — 59,671
+  edges of the form "CloudTelemetry.framework connects to
+  com.apple.security.syspolicy" because syspolicyd links CloudTelemetry. It is
+  replaced by `LOOKS_UP`, drawn only from a mach-lookup entitlement value or from
+  the service name appearing verbatim in the client binary, never to a service
+  the job provides itself. 38,669 edges now, 2,050 of them evidence-backed
+  client edges (1,602 entitlement, 448 string).
+- Graph assembly deduplicated edges with a linear scan, which made it quadratic:
+  a full scan took 6m35s and now takes 1m06s.
 
 - `connect` matching `xpc_connection_send_message` flagged 310 targets as
   network-facing without a single socket symbol; `system`/`fork`/`proc_`

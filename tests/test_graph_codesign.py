@@ -13,16 +13,19 @@ from graph.exporters import export_dot, export_json, export_mermaid
 from graph.model import Graph, build_graph
 
 
-def _target(label="t", mach_services=(), libs=(), entitlements=(), sinks=(), privileged=False):
+def _target(label="t", mach_services=(), libs=(), entitlements=(), sinks=(), privileged=False,
+            strings=(), executable="/usr/libexec/x"):
     svc = SimpleNamespace(
-        label=label, associated_executable="/usr/libexec/x",
+        label=label, associated_executable=executable,
         mach_services=list(mach_services), run_as="root" if privileged else "user",
-        is_privileged=privileged, sockets={},
+        run_as_user="root" if privileged else "current-user",
+        is_privileged=privileged, sockets={}, enabled=True, scope="system-daemon",
     )
-    macho = SimpleNamespace(linked_libs=list(libs))
+    macho = SimpleNamespace(linked_libs=list(libs), interesting_strings=list(strings))
     codesign = SimpleNamespace(entitlements={e: True for e in entitlements})
     exe = SimpleNamespace(macho=macho, codesign=codesign)
-    return SimpleNamespace(service=svc, executable=exe, sensitive_sinks=list(sinks))
+    return SimpleNamespace(service=svc, executable=exe, sensitive_sinks=list(sinks),
+                           score=10, validation="NONE_OBSERVED")
 
 
 class TestGraph(unittest.TestCase):
@@ -41,8 +44,26 @@ class TestGraph(unittest.TestCase):
         edge_types = {e.edge_type for e in g.edges}
         self.assertIn("PROVIDES", edge_types)
         self.assertIn("LINKS_TO", edge_types)
-        self.assertIn("CONNECTS_TO", edge_types)
         self.assertIn("HAS_ENTITLEMENT", edge_types)
+        # A framework a job links is not a client of the service that job
+        # provides; that edge used to be invented for every pair.
+        self.assertNotIn("CONNECTS_TO", edge_types)
+
+    def test_a_client_naming_a_service_gets_a_lookup_edge(self):
+        provider = _target(label="provider", mach_services=["com.example.svc"], privileged=True)
+        client = _target(label="client", executable="/usr/libexec/client",
+                         strings=["com.example.svc"])
+        g = build_graph([provider, client])
+        lookups = [e for e in g.edges if e.edge_type == "LOOKS_UP"]
+        self.assertEqual(len(lookups), 1)
+        self.assertEqual(lookups[0].source, "exec:/usr/libexec/client")
+        self.assertEqual(lookups[0].target, "mach:com.example.svc")
+        self.assertEqual(lookups[0].data["evidence"], "string")
+
+    def test_no_lookup_edge_to_an_unknown_service_name(self):
+        client = _target(label="client", strings=["com.example.does-not-exist"])
+        g = build_graph([client])
+        self.assertEqual([e for e in g.edges if e.edge_type == "LOOKS_UP"], [])
 
     def test_export_json_roundtrip(self):
         g = build_graph([_target(mach_services=["com.x"])])

@@ -22,6 +22,13 @@ from typing import List, Optional
 
 from collectors import discover_services, inspect_codesign, inspect_macho
 from graph.exporters import export_dot, export_json, export_mermaid
+from graph.query import (
+    TrustGraph,
+    paths_to_text,
+    to_dot,
+    to_mermaid,
+    to_text,
+)
 from graph.model import build_graph
 from models.executable import Executable
 from reporting.export import export_report
@@ -206,6 +213,89 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_graph(path: str) -> Optional[TrustGraph]:
+    if not os.path.exists(path):
+        print(f"no report at {path} — run 'tbm scan' first, or pass --report", file=sys.stderr)
+        return None
+    with open(path, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+    graph = report.get("graph")
+    if not graph:
+        print(f"{path} carries no graph (was it written with --json only?)", file=sys.stderr)
+        return None
+    return TrustGraph(graph)
+
+
+def _cmd_graph(args: argparse.Namespace) -> int:
+    """Query the trust-boundary graph instead of reading all 8,000 nodes."""
+    _setup_logging(args.verbose)
+    tg = _load_graph(args.report)
+    if tg is None:
+        return 2
+
+    output = ""
+    if args.boundaries:
+        rows = tg.boundary_crossings(min_score=args.min_score,
+                                     enabled_only=not args.include_disabled,
+                                     validation=args.validation or None)
+        if args.format == "json":
+            output = json.dumps(rows, indent=2)
+        else:
+            lines = [f"{len(rows)} boundary crossing(s): a non-root client naming a "
+                     f"root daemon's Mach service\n"]
+            lines.append(f"  {'MACH SERVICE':52} {'PROVIDER':30} {'SCORE':>5} {'VALIDATION':12} CLIENT")
+            for r in rows[: args.limit]:
+                lines.append(f"  {r['mach_service'][:52]:52} {r['provider'][:30]:30} "
+                             f"{r['provider_score']:>5} {r['provider_validation']:12} "
+                             f"{r['client_service'] or r['client']} [{r['evidence']}]")
+            if len(rows) > args.limit:
+                lines.append(f"  ... +{len(rows) - args.limit} more (raise --limit)")
+            output = "\n".join(lines)
+
+    elif args.path:
+        source, target = args.path
+        src_ids, dst_ids = tg.resolve(source), tg.resolve(target)
+        if not src_ids or not dst_ids:
+            print(f"could not resolve {'source' if not src_ids else 'target'}", file=sys.stderr)
+            return 1
+        paths = tg.shortest_paths(src_ids[0], dst_ids[0], max_paths=args.max_paths,
+                                  max_depth=args.depth or 6)
+        if args.format == "json":
+            output = json.dumps([[{"node": n, "edge": e} for n, e in p] for p in paths], indent=2)
+        else:
+            output = (f"{tg.node(src_ids[0]).get('label')}  ->  "
+                      f"{tg.node(dst_ids[0]).get('label')}\n\n" + paths_to_text(tg, paths))
+
+    elif args.node:
+        ids = tg.resolve(args.node)
+        if not ids:
+            print(f"no node matches {args.node!r}", file=sys.stderr)
+            return 1
+        if len(ids) > 1 and args.format == "text":
+            print(f"{len(ids)} nodes match {args.node!r}; showing {ids[0]}")
+            for other in ids[1:6]:
+                print(f"    also: {other}")
+            print()
+        sub = tg.neighbourhood(ids[0], depth=args.depth or 1,
+                               edge_types=args.edge or None, limit=args.limit)
+        output = {"dot": lambda: to_dot(sub, tg.node(ids[0]).get("label", "graph")),
+                  "mermaid": lambda: to_mermaid(sub),
+                  "json": lambda: json.dumps(sub.to_dict(), indent=2),
+                  "text": lambda: to_text(tg, sub)}[args.format]()
+    else:
+        print("pick one of --node, --path or --boundaries", file=sys.stderr)
+        return 2
+
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(output + "\n")
+        print(f"  {args.output}")
+    else:
+        print(output)
+    return 0
+
+
 def _cmd_export(args: argparse.Namespace) -> int:
     """Flatten an existing report into one file per entity."""
     _setup_logging(args.verbose)
@@ -293,6 +383,29 @@ def build_parser() -> argparse.ArgumentParser:
                    help="max rows per Markdown table (0 = all); CSV always has every row")
     e.add_argument("--verbose", action="store_true")
     e.set_defaults(func=_cmd_export)
+
+    g = sub.add_parser("graph", help="query the trust-boundary graph")
+    g.add_argument("--report", default="./results/report.json", help="report.json to read")
+    g.add_argument("--node", help="show what surrounds a service / binary / Mach service")
+    g.add_argument("--path", nargs=2, metavar=("FROM", "TO"),
+                   help="shortest routes between two entities")
+    g.add_argument("--boundaries", action="store_true",
+                   help="every non-root client naming a root daemon's Mach service")
+    g.add_argument("--depth", type=int, default=0, help="hops (default 1 for --node, 6 for --path)")
+    g.add_argument("--edge", action="append",
+                   help="restrict to an edge type (repeatable): PROVIDES, LOOKS_UP, LINKS_TO, ...")
+    g.add_argument("--min-score", type=int, default=0, help="--boundaries: minimum provider score")
+    g.add_argument("--validation", action="append",
+                   choices=["NONE_OBSERVED", "WEAK", "MEDIUM", "STRONG"],
+                   help="--boundaries: only providers with this validation grade (repeatable)")
+    g.add_argument("--include-disabled", action="store_true",
+                   help="--boundaries: include providers launchd would not load")
+    g.add_argument("--max-paths", type=int, default=5)
+    g.add_argument("--limit", type=int, default=60, help="max nodes / rows")
+    g.add_argument("--format", choices=["text", "dot", "mermaid", "json"], default="text")
+    g.add_argument("--output", help="write to a file instead of stdout")
+    g.add_argument("--verbose", action="store_true")
+    g.set_defaults(func=_cmd_graph)
 
     return p
 

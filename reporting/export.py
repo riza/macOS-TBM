@@ -232,6 +232,20 @@ def _score_reasons(targets: List[Dict[str, Any]]) -> Table:
     return ("score_reasons", ["service", "total_score", "weight", "reason"], rows)
 
 
+def _boundary_crossings(report: Dict[str, Any]) -> Table:
+    """Every place a less-privileged client names a root daemon's Mach service."""
+    from graph.query import TrustGraph
+
+    rows = []
+    for c in TrustGraph(report.get("graph") or {}).boundary_crossings():
+        rows.append([c["mach_service"], c["provider"], c["provider_score"],
+                     c["provider_validation"], c["client_service"] or c["client"],
+                     c["client_run_as"], c["evidence"]])
+    return ("boundary_crossings",
+            ["mach_service", "provider", "provider_score", "provider_validation",
+             "client", "client_run_as", "evidence"], rows)
+
+
 def _graph_nodes(report: Dict[str, Any]) -> Table:
     rows = []
     for n in (report.get("graph") or {}).get("nodes") or []:
@@ -274,7 +288,7 @@ def build_tables(report: Dict[str, Any]) -> List[Table]:
         _score_reasons(targets),
     ]
     if report.get("graph"):
-        tables += [_graph_nodes(report), _graph_edges(report)]
+        tables += [_boundary_crossings(report), _graph_nodes(report), _graph_edges(report)]
     return tables
 
 
