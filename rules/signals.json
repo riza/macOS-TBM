@@ -1,0 +1,543 @@
+{
+  "_match_syntax": "Needles are matched per evidence pool (see analyzers/_match.py). Against symbols, ObjC classes and library names a needle must match the WHOLE name: 'connect' is the function connect, not dispatch_mach_connect; 'Security' is not libEndpointSecurity.dylib. Against strings a needle may match inside an entry, on identifier-token boundaries. A trailing '*' is a prefix match in both modes: 'posix_spawn*' matches posix_spawnattr_setflags.",
+  "caller_validation": {
+    "description": "Static indicators of caller/authorization validation, grouped into classes with their own weight. Presence is a FACT; absence is NOT a claim of missing authorization. Not part of the priority score.",
+    "classes": {
+      "audit-token-extraction": {
+        "weight": 5,
+        "description": "obtains the caller's audit token from the connection",
+        "symbols": [
+          "xpc_connection_get_audit_token",
+          "xpc_dictionary_get_audit_token"
+        ],
+        "strings": [
+          "auditToken"
+        ]
+      },
+      "caller-identity": {
+        "weight": 3,
+        "description": "reads the caller's uid/gid/pid",
+        "symbols": [
+          "audit_token_to_euid",
+          "audit_token_to_egid",
+          "audit_token_to_ruid",
+          "audit_token_to_rgid",
+          "audit_token_to_pid",
+          "audit_token_to_pidversion",
+          "audit_token_to_asid",
+          "audit_token_to_audit_session",
+          "audit_token_to_posix_cred",
+          "xpc_connection_get_euid",
+          "xpc_connection_get_egid",
+          "xpc_connection_get_pid"
+        ]
+      },
+      "entitlement-check": {
+        "weight": 5,
+        "description": "checks an entitlement on the connection",
+        "symbols": [
+          "xpc_connection_copy_entitlement_value"
+        ],
+        "strings": [
+          "valueForEntitlement"
+        ]
+      },
+      "sectask-entitlement": {
+        "weight": 8,
+        "description": "builds a SecTask from the caller and queries its entitlements",
+        "symbols": [
+          "SecTaskCopyValueForEntitlement",
+          "SecTaskCreateWithAuditToken",
+          "SecTaskCopySigningIdentifier",
+          "SecTaskCopyTeamIdentifier"
+        ]
+      },
+      "code-signing-requirement": {
+        "weight": 8,
+        "description": "evaluates a code-signing requirement against the caller",
+        "symbols": [
+          "SecCodeCheckValidity",
+          "SecStaticCodeCheckValidity",
+          "SecRequirementCreateWithString",
+          "SecCodeCopyGuestWithAttributes",
+          "SecCodeCopySelf",
+          "SecStaticCodeCreateWithPath"
+        ],
+        "strings": [
+          "setCodeSigningRequirement"
+        ]
+      },
+      "authorization-services": {
+        "weight": 6,
+        "description": "asks Authorization Services to authorize the right",
+        "symbols": [
+          "AuthorizationCopyRights",
+          "AuthorizationCreate",
+          "AuthorizationCreateFromExternalForm",
+          "AuthorizationRightGet"
+        ]
+      },
+      "sandbox-check": {
+        "weight": 4,
+        "description": "asks the sandbox whether the caller may do this",
+        "symbols": [
+          "sandbox_check",
+          "sandbox_check_by_audit_token"
+        ]
+      },
+      "code-signing-status": {
+        "weight": 3,
+        "description": "reads the caller's code-signing status flags",
+        "symbols": [
+          "csops",
+          "csops_audittoken"
+        ]
+      }
+    }
+  },
+  "ipc_provider": {
+    "description": "Static indicators the binary provides an IPC/Mach/XPC service.",
+    "symbols": [
+      "xpc_connection_create_mach_service",
+      "xpc_main",
+      "bootstrap_check_in",
+      "bootstrap_register",
+      "xpc_connection_set_event_handler",
+      "xpc_connection_set_target_queue",
+      "xpc_dictionary_get_string",
+      "xpc_dictionary_get_value"
+    ],
+    "strings": [
+      "NSXPCListener",
+      "NSXPCInterface",
+      "NSXPCConnection"
+    ],
+    "libs": []
+  },
+  "ipc_client": {
+    "description": "Static indicators the binary is an IPC/XPC/Mach client.",
+    "symbols": [
+      "xpc_connection_create",
+      "xpc_connection_create_mach_service",
+      "xpc_connection_send_message",
+      "xpc_connection_send_message_with_reply",
+      "bootstrap_look_up",
+      "bootstrap_lookup2",
+      "xpc_connection_set_event_handler"
+    ],
+    "strings": [
+      "NSXPCConnection"
+    ],
+    "libs": []
+  },
+  "ipc_generic": {
+    "description": "Generic Mach IPC primitives.",
+    "symbols": [
+      "mach_msg",
+      "mach_msg_server",
+      "mach_msg_send",
+      "mach_port_allocate",
+      "mach_port_insert_right",
+      "mach_port_lookup",
+      "task_for_pid",
+      "dispatch_mach*",
+      "xpc_*"
+    ],
+    "strings": [
+      "mach_msg",
+      "bootstrap_*",
+      "xpc_connection_*",
+      "xpc_dictionary_*",
+      "xpc_object_*",
+      "mach_port_*"
+    ],
+    "libs": []
+  },
+  "sensitive": {
+    "account": {
+      "description": "User/group and directory-service management",
+      "libs": [
+        "OpenDirectory",
+        "DirectoryService",
+        "Collaboration"
+      ],
+      "symbols": [
+        "ODRecord*",
+        "ODSession*",
+        "ODNode*",
+        "ODQuery*",
+        "dsDo*",
+        "mbr_*",
+        "DSOpenDirService",
+        "eDSAuth*",
+        "ODNodeCreate*"
+      ],
+      "strings": [
+        "OpenDirectory",
+        "DirectoryService*",
+        "ODRecord*",
+        "dscl",
+        "odutil",
+        "com.apple.opendirectoryd",
+        "CSIdentity*"
+      ],
+      "entitlements": [
+        "com.apple.private.opendirectoryd."
+      ]
+    },
+    "credential": {
+      "description": "Keychain, authentication and credential material",
+      "libs": [
+        "SecurityFoundation",
+        "LocalAuthentication",
+        "AuthenticationServices"
+      ],
+      "symbols": [
+        "SecItemAdd",
+        "SecItemCopyMatching",
+        "SecItemUpdate",
+        "SecItemDelete",
+        "SecKeychain*",
+        "SecKeyCreate*",
+        "SecKeyCopy*",
+        "LAContext*",
+        "LAPolicy*",
+        "SecTrust*",
+        "SecAccessControl*",
+        "SecAccessCreate*",
+        "SFAuthorization*"
+      ],
+      "strings": [
+        "SecKeychain*",
+        "SecItemCopyMatching",
+        "kSecClass*",
+        "LocalAuthentication",
+        "LAPolicy*",
+        "AuthorizationCopyRights",
+        "SecAccessControl*"
+      ],
+      "entitlements": [
+        "keychain-access-groups",
+        "keychain-cloud-circle",
+        "com.apple.private.system-keychain",
+        "com.apple.keystore.",
+        "com.apple.private.applecredentialmanager."
+      ]
+    },
+    "privacy": {
+      "description": "TCC-protected data and capture surfaces",
+      "libs": [
+        "TCC",
+        "AVFoundation",
+        "CoreLocation",
+        "Photos",
+        "Contacts",
+        "EventKit",
+        "ScreenCaptureKit",
+        "ReplayKit",
+        "CoreMediaIO"
+      ],
+      "symbols": [
+        "TCCAccess*",
+        "kTCCService*",
+        "AVCaptureDevice*",
+        "CLLocationManager*",
+        "CGDisplayStream*",
+        "CGWindowList*",
+        "SCShareableContent*",
+        "SCStream*"
+      ],
+      "strings": [
+        "kTCCService*",
+        "TCCAccessRequest",
+        "com.apple.TCC",
+        "tccd",
+        "AVCaptureDevice",
+        "CLLocationManager",
+        "CGWindowListCreateImage",
+        "SCScreenshotManager"
+      ],
+      "entitlements": [
+        "com.apple.private.tcc.",
+        "com.apple.private.screencapturekit.",
+        "com.apple.locationd.",
+        "com.apple.security.device.camera",
+        "com.apple.security.device.microphone",
+        "com.apple.private.contacts",
+        "com.apple.private.photos."
+      ]
+    },
+    "filesystem": {
+      "description": "Path resolution, filesystem mutation, mount and quarantine surface",
+      "libs": [
+        "DiskArbitration"
+      ],
+      "aspects": {
+        "mount": {
+          "weight": 8,
+          "symbols": [
+            "mount",
+            "unmount",
+            "umount",
+            "fmount",
+            "mount_*",
+            "getmntinfo",
+            "DADiskMount*",
+            "DADiskUnmount*",
+            "DARegisterDiskAppearedCallback"
+          ]
+        },
+        "mutation": {
+          "weight": 8,
+          "symbols": [
+            "chown",
+            "fchown",
+            "lchown",
+            "chmod",
+            "fchmod",
+            "fchmodat",
+            "unlink",
+            "unlinkat",
+            "rmdir",
+            "rename",
+            "renameat",
+            "renamex_np",
+            "renameatx_np",
+            "link",
+            "linkat",
+            "symlink",
+            "symlinkat",
+            "truncate",
+            "ftruncate",
+            "mkdir",
+            "mkdirat",
+            "chflags",
+            "fchflags",
+            "utimes",
+            "futimes"
+          ],
+          "strings": [
+            "chflags"
+          ]
+        },
+        "xattr": {
+          "weight": 8,
+          "symbols": [
+            "setxattr",
+            "fsetxattr",
+            "removexattr",
+            "fremovexattr"
+          ],
+          "strings": [
+            "setxattr"
+          ]
+        },
+        "quarantine": {
+          "weight": 8,
+          "symbols": [
+            "qtn_*",
+            "sandbox_extension_issue_file*"
+          ],
+          "strings": [
+            "com.apple.quarantine",
+            "qtn_file*",
+            "sandbox_extension_issue_file"
+          ]
+        },
+        "path-resolution": {
+          "weight": 2,
+          "symbols": [
+            "open",
+            "openat",
+            "open_dprotected_np",
+            "realpath",
+            "readlink",
+            "readlinkat",
+            "access",
+            "faccessat",
+            "fcntl",
+            "opendir",
+            "fdopendir",
+            "chdir",
+            "fchdir",
+            "getcwd",
+            "dirname",
+            "basename",
+            "resolve_symlinks"
+          ],
+          "strings": [
+            "NSFileManager",
+            "stringByResolvingSymlinksInPath"
+          ]
+        },
+        "metadata": {
+          "weight": 2,
+          "symbols": [
+            "stat",
+            "lstat",
+            "fstat",
+            "fstatat",
+            "statfs",
+            "fstatfs",
+            "statx_np",
+            "getattrlist",
+            "setattrlist",
+            "getattrlistbulk",
+            "fsctl",
+            "ffsctl",
+            "getxattr",
+            "fgetxattr",
+            "listxattr",
+            "pathconf"
+          ]
+        }
+      }
+    },
+    "execution": {
+      "description": "Process spawning, privileged helpers, launchd interaction",
+      "libs": [
+        "ServiceManagement",
+        "ExtensionKit"
+      ],
+      "symbols": [
+        "posix_spawn*",
+        "execve",
+        "execvp",
+        "execl*",
+        "fork",
+        "vfork",
+        "system",
+        "popen",
+        "SMJobBless",
+        "SMJobSubmit",
+        "SMAppService*",
+        "AuthorizationExecuteWithPrivileges",
+        "responsibility_spawnattrs_*"
+      ],
+      "strings": [
+        "posix_spawn*",
+        "SMJobBless",
+        "AuthorizationExecuteWithPrivileges",
+        "launchctl",
+        "NSTask"
+      ],
+      "entitlements": [
+        "com.apple.private.xpc.launchd.job-manager",
+        "com.apple.private.system-extension"
+      ]
+    },
+    "install_update": {
+      "description": "Installer, software update and package management",
+      "libs": [
+        "PackageKit",
+        "Installer",
+        "SoftwareUpdate",
+        "SUCore",
+        "MobileSoftwareUpdate"
+      ],
+      "symbols": [
+        "PKInstall*",
+        "PKPackage*",
+        "PKSignedContainer*",
+        "SUInstall*",
+        "InstallApplication"
+      ],
+      "strings": [
+        "com.apple.installer",
+        "softwareupdated",
+        "PackageKit",
+        "PKInstall*",
+        "MobileSoftwareUpdate",
+        "SUCore"
+      ],
+      "entitlements": [
+        "com.apple.private.IASInstallerAuthAgent",
+        "com.apple.private.softwareupdate",
+        "com.apple.MobileAsset.SoftwareUpdate",
+        "com.apple.private.InstallCoordination.",
+        "com.apple.private.mas-receipt-installer"
+      ]
+    },
+    "network": {
+      "description": "Sockets, listeners and network configuration",
+      "libs": [
+        "Network",
+        "NetworkExtension",
+        "CFNetwork"
+      ],
+      "symbols": [
+        "socket",
+        "socketpair",
+        "bind",
+        "listen",
+        "accept",
+        "connect",
+        "connectx",
+        "sendto",
+        "recvfrom",
+        "getaddrinfo",
+        "gethostbyname",
+        "nw_connection_*",
+        "nw_listener_*",
+        "nw_endpoint_*",
+        "CFSocketCreate*",
+        "setsockopt",
+        "SSLHandshake",
+        "launch_activate_socket",
+        "NSURLSession*",
+        "NSURLRequest",
+        "NSURLConnection",
+        "NSURLCredential"
+      ],
+      "strings": [
+        "nw_listener_*",
+        "nw_connection_*",
+        "CFSocketCreate*",
+        "getaddrinfo",
+        "com.apple.network*",
+        "NEConfiguration"
+      ],
+      "entitlements": [
+        "com.apple.security.network.client",
+        "com.apple.security.network.server",
+        "com.apple.private.network.",
+        "com.apple.networkd_privileged"
+      ]
+    },
+    "security_policy": {
+      "description": "Code signing, Gatekeeper, sandbox and policy evaluation",
+      "libs": [
+        "EndpointSecurity",
+        "quarantine"
+      ],
+      "symbols": [
+        "SecCodeCheckValidity",
+        "SecStaticCode*",
+        "SecPolicyCreate*",
+        "SecAssessment*",
+        "es_new_client",
+        "es_subscribe",
+        "SecTrustSettings*",
+        "SecRequirement*",
+        "sandbox_init*",
+        "sandbox_check*"
+      ],
+      "strings": [
+        "syspolicyd",
+        "Gatekeeper",
+        "SecAssessment*",
+        "es_new_client",
+        "es_subscribe",
+        "com.apple.securityd",
+        "sandbox_init",
+        "seatbelt"
+      ],
+      "entitlements": [
+        "com.apple.private.amfi.",
+        "com.apple.developer.endpoint-security.",
+        "com.apple.private.endpoint-security."
+      ]
+    }
+  },
+  "_evidence_model": "Every match is weighted by kind (import 8, entitlement 6, objc 5, identifier string 3, library 1, weak link 0, loose token 0) and, where a rule declares aspects, capped by what the primitive means (min of the two): a 'stat' import counts 2 under path-resolution, a 'mount' import counts 8. Sinks: >=10 HIGH, >=5 MEDIUM. Caller validation sums one hit per class: >=12 STRONG, >=5 MEDIUM, >0 WEAK."
+}

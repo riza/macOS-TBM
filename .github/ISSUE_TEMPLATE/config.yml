@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Vulnerability in macOS itself
+    url: https://security.apple.com/
+    about: Findings about Apple components go to Apple, not to this repository.
+  - name: Vulnerability in macOS-TBM
+    url: https://github.com/riza/macOS-TBM/security/advisories/new
+    about: Report privately via a security advisory. See SECURITY.md.
