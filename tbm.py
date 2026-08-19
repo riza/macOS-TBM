@@ -14,6 +14,7 @@ of a vulnerability.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -23,6 +24,7 @@ from collectors import discover_services, inspect_codesign, inspect_macho
 from graph.exporters import export_dot, export_json, export_mermaid
 from graph.model import build_graph
 from models.executable import Executable
+from reporting.export import export_report
 from reporting.html_report import write_html_report
 from reporting.json_report import build_report, write_json_report
 from scanner import analyze_service, run_scan
@@ -204,6 +206,31 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    """Flatten an existing report into one file per entity."""
+    _setup_logging(args.verbose)
+    if not os.path.exists(args.report):
+        print(f"no report at {args.report} — run 'tbm scan' first, or pass --report", file=sys.stderr)
+        return 2
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+
+    formats = ["csv", "md"] if args.format == "both" else [args.format]
+    written = export_report(report, args.output, formats=formats,
+                            dossiers=not args.no_dossiers, md_limit=args.md_limit)
+
+    tables = sum(1 for p in written if os.path.dirname(p) == os.path.abspath(args.output)
+                 or os.path.dirname(p) == args.output)
+    dossiers = len(written) - tables
+    print(f"\n  {len(written)} files -> {args.output}")
+    for path in sorted(p for p in written if p.endswith((".csv", ".md"))
+                       and os.sep + "services" + os.sep not in p)[:40]:
+        print(f"    {os.path.basename(path)}")
+    if dossiers:
+        print(f"    services/  ({dossiers} per-service dossiers)")
+    return 0
+
+
 def _cmd_service(args: argparse.Namespace) -> int:
     _setup_logging(args.verbose)
     label = args.label.lower()
@@ -255,6 +282,17 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("label")
     sv.add_argument("--verbose", action="store_true")
     sv.set_defaults(func=_cmd_service)
+
+    e = sub.add_parser("export", help="export an existing report as per-entity CSV / Markdown")
+    e.add_argument("--report", default="./results/report.json", help="report.json to read")
+    e.add_argument("--output", default="./results/export", help="output directory")
+    e.add_argument("--format", choices=["csv", "md", "both"], default="both")
+    e.add_argument("--no-dossiers", action="store_true",
+                   help="skip the per-service Markdown dossiers")
+    e.add_argument("--md-limit", type=int, default=500,
+                   help="max rows per Markdown table (0 = all); CSV always has every row")
+    e.add_argument("--verbose", action="store_true")
+    e.set_defaults(func=_cmd_export)
 
     return p
 

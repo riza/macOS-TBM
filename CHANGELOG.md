@@ -8,6 +8,11 @@ All notable changes to macOS-TBM are documented here. This project follows
 
 ### Added
 
+- **`tbm export`** flattens a report into one CSV and Markdown table per entity
+  (services, executables, Mach services, entitlements, frameworks, sinks, sink
+  evidence, caller validation, findings, score reasons, graph nodes and edges),
+  plus a per-service Markdown dossier and an index. Reads `report.json`, so it
+  is instant and needs no re-scan.
 - **Caller validation is graded like a sink**, with weighted classes of identity
   primitive (`sectask-entitlement` 8, `code-signing-requirement` 8,
   `authorization-services` 6, `audit-token-extraction` 5, `entitlement-check` 5,
