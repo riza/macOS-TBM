@@ -253,6 +253,29 @@ com.apple.mobileactivationd                   ...mobileactivationd    111 NONE_O
 The dashboard shows the same relationship per target: who names this service,
 by what evidence, and whether that client crosses a privilege boundary.
 
+### The explorer
+
+`report.html` carries an interactive view of the trust core — services,
+binaries, Mach services and subsystems, 3,597 nodes and 7,137 edges,
+index-encoded into ~290 KB. Open it with the **Graph** button, `g`, or the
+**Graph ↗** button in any dossier; entitlement and framework nodes stay out (they
+are 4,500 nodes and 31,000 edges that answer a different question).
+
+Three modes:
+
+- **boundary crossings** — a ladder: clients on the left, the Mach services they
+  name in the middle, the root daemons that answer on the right. Highest-scoring
+  providers first.
+- **focus: one entity** — a force-directed neighbourhood around one node, depth
+  1–3. Drag nodes, double-click to expand, click for details.
+- **top targets by score** — the highest-scoring enabled services with their
+  endpoints and clients.
+
+Pan by dragging, zoom with the wheel, filter by edge type, and click any node for
+its score, privilege, load state, validation grade and edge counts — with
+*Focus here*, *Expand* and *Open dossier* from there. A dashed edge is
+string evidence, a solid one an entitlement; a hollow node is a disabled job.
+
 ---
 
 ## Trust-boundary model

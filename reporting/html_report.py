@@ -320,6 +320,65 @@ tbody tr.active { background: rgba(255,176,32,.1); box-shadow: inset 2px 0 0 var
 .hoodsvg { width: 100%; max-height: none; margin-top: 6px; }
 .hoodsvg .gl { font-family: var(--mono); font-size: 10.5px; fill: var(--text); }
 .hoodsvg .gs { font-family: var(--mono); font-size: 9px; fill: var(--text-3); }
+.hoodsvg .hit text { cursor: pointer; }
+.hoodsvg .hit:hover text.gl { fill: var(--signal); }
+
+/* ---------- graph explorer ---------- */
+#explorer {
+  position: fixed; inset: 0; z-index: 95; display: none;
+  background: var(--ink); flex-direction: column;
+}
+#explorer.open { display: flex; }
+.exbar {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0b0e13;
+}
+.exbar h3 {
+  font-family: var(--display); font-size: 12px; letter-spacing: .24em;
+  text-transform: uppercase; margin: 0 8px 0 0; color: var(--signal);
+}
+.exbar .search { flex: 0 1 300px; }
+.exbar select, .exbar input[type=range] {
+  font-family: var(--mono); font-size: 11px; background: var(--ink);
+  color: var(--text); border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 8px;
+}
+.exbar label.rng { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 11px; }
+.extog {
+  border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 10px; cursor: pointer;
+  font-size: 10.5px; letter-spacing: .06em; user-select: none; color: var(--text-3);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.extog i { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
+.extog.on { color: var(--text); border-color: currentColor; }
+.exstage { flex: 1; position: relative; overflow: hidden; }
+#exCanvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#exCanvas.dragging { cursor: grabbing; }
+.exinfo {
+  position: absolute; top: 14px; right: 14px; width: 306px; max-height: calc(100% - 28px);
+  overflow: auto; background: rgba(11,14,19,.96); border: 1px solid var(--line-2);
+  border-radius: 10px; padding: 14px; box-shadow: var(--shadow); display: none;
+}
+.exinfo.open { display: block; }
+.exinfo h4 {
+  font-family: var(--display); font-size: 12px; letter-spacing: .1em; margin: 0 0 4px;
+  word-break: break-all; color: var(--text);
+}
+.exinfo .kind { color: var(--text-3); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+.exinfo .row { display: flex; justify-content: space-between; gap: 10px; margin: 3px 0; color: var(--text-2); }
+.exinfo .row span:last-child { color: var(--text); }
+.exinfo .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.exinfo button { font-size: 10.5px; padding: 5px 9px; }
+.exlegend {
+  position: absolute; left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 4px;
+  background: rgba(11,14,19,.9); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.exlegend div { display: flex; align-items: center; gap: 7px; color: var(--text-2); font-size: 10.5px; }
+.exlegend b { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.exstat {
+  position: absolute; left: 14px; top: 14px; color: var(--text-3); font-size: 11px;
+  background: rgba(11,14,19,.9); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
+}
+.exstat b { color: var(--signal); font-weight: 600; }
 .looked { display: block; color: var(--text-3); font-size: 10.5px; }
 .dim { color: var(--text-3); }
 .empty { padding: 40px; text-align: center; color: var(--text-3); }
@@ -344,7 +403,8 @@ tbody tr.active { background: rgba(255,176,32,.1); box-shadow: inset 2px 0 0 var
   background: linear-gradient(180deg, rgba(255,176,32,.05), transparent);
 }
 .dhead h3 { font-family: var(--display); font-size: 18px; letter-spacing: .06em; margin: 0 0 4px; word-break: break-all; }
-.dclose { margin-left: auto; flex: none; }
+.dclose { flex: none; }
+#dgraph { margin-left: auto; flex: none; }
 .dbody { overflow: auto; padding: 4px 22px 60px; }
 .dbody h4 {
   font-family: var(--display); font-size: 10.5px; letter-spacing: .24em; text-transform: uppercase;
@@ -394,6 +454,7 @@ details > summary:hover { color: var(--signal); }
   </div>
   <div class="head-right">
     <div class="chip-static">scope <b id="scopechip">—</b></div>
+    <button id="openGraph">Graph ⌥</button>
     <button id="csv">Export CSV</button>
   </div>
 </header>
@@ -469,6 +530,30 @@ details > summary:hover { color: var(--signal); }
   </div>
 </div>
 
+<div id="explorer" aria-hidden="true">
+  <div class="exbar">
+    <h3>Trust boundary</h3>
+    <div class="search" style="position:relative">
+      <input type="text" id="exSearch" placeholder="focus a service, binary or Mach service…" spellcheck="false">
+    </div>
+    <select id="exMode">
+      <option value="focus">focus: one entity</option>
+      <option value="boundaries">boundary crossings</option>
+      <option value="top">top targets by score</option>
+    </select>
+    <label class="rng">depth <input type="range" id="exDepth" min="1" max="3" value="2" style="width:70px"><b id="exDepthN">2</b></label>
+    <span id="exEdgeTogs"></span>
+    <button id="exFit">Fit</button>
+    <button id="exClose" style="margin-left:auto">Close ✕</button>
+  </div>
+  <div class="exstage">
+    <canvas id="exCanvas"></canvas>
+    <div class="exstat" id="exStat"></div>
+    <div class="exlegend" id="exLegend"></div>
+    <div class="exinfo" id="exInfo"></div>
+  </div>
+</div>
+
 <div id="tip"></div>
 <div id="scrim"></div>
 <aside id="drawer" aria-hidden="true">
@@ -477,6 +562,7 @@ details > summary:hover { color: var(--signal); }
       <h3 id="d-title">—</h3>
       <div id="d-sub" class="dim"></div>
     </div>
+    <button id="dgraph">Graph ↗</button>
     <button class="dclose" id="dclose">Close ✕</button>
   </div>
   <div class="dbody" id="d-body"></div>
@@ -841,6 +927,551 @@ function list(arr, fmt) {
   return `<ul>${arr.map(fmt || (x => `<li>${esc(x)}</li>`)).join("")}</ul>`;
 }
 
+/* ---------- graph explorer ----------
+   A force-directed view over the trust core (services, binaries, Mach services,
+   subsystems). The whole core is 3,597 nodes; drawing all of them at once is
+   noise, so every mode selects a bounded slice and the simulation only ever
+   runs on what is on screen. */
+const G = REPORT.core_graph || { nodes: [], edges: [], node_types: [], edge_types: [] };
+const NT = G.node_types || [], ET = G.edge_types || [], VAL = G.validation || [];
+const NCOL = { LaunchService: "#ffb020", Executable: "#4fd6e0", MachService: "#a98bff",
+               SecuritySubsystem: "#ff6b5e" };
+const ECOL = { LOOKS_UP: "#ffb020", PROVIDES: "#a98bff", LAUNCHED_BY: "#46536a",
+               ACCESSES_SUBSYSTEM: "#ff6b5e" };
+
+const MAX_NODES = 600;
+
+// Adjacency, built once.
+const GADJ = G.nodes.map(() => []);
+(G.edges || []).forEach((e, i) => { GADJ[e[0]].push(i); GADJ[e[1]].push(i); });
+const gLabel = (i) => G.nodes[i][1];
+const gType = (i) => NT[G.nodes[i][0]];
+const gScore = (i) => G.nodes[i][2];
+const gPriv = (i) => !!G.nodes[i][3];
+const gEnabled = (i) => !!G.nodes[i][4];
+const gValidation = (i) => VAL[G.nodes[i][5]] || "NONE_OBSERVED";
+
+const EX = {
+  open: false, mode: "focus", root: null, depth: 2,
+  edges: new Set(ET), nodes: [], links: [], byIndex: new Map(),
+  tx: 0, ty: 0, scale: 1, alpha: 0, raf: null,
+  hover: null, selected: null, drag: null, panning: null,
+};
+
+function gFind(term) {
+  const t = String(term || "").trim().toLowerCase();
+  if (!t) return null;
+  let best = null, bestLen = Infinity;
+  for (let i = 0; i < G.nodes.length; i++) {
+    const label = gLabel(i).toLowerCase();
+    if (label === t) return i;
+    if (label.includes(t) && label.length < bestLen) { best = i; bestLen = label.length; }
+  }
+  return best;
+}
+
+/* ---- slice selection ---- */
+function sliceFocus(root, depth) {
+  const keep = new Set([root]);
+  let frontier = [root];
+  for (let d = 0; d < depth && keep.size < MAX_NODES; d++) {
+    const next = [];
+    for (const n of frontier) {
+      for (const ei of GADJ[n]) {
+        const e = G.edges[ei];
+        if (!EX.edges.has(ET[e[2]])) continue;
+        const other = e[0] === n ? e[1] : e[0];
+        if (!keep.has(other)) { keep.add(other); next.push(other); if (keep.size >= MAX_NODES) break; }
+      }
+      if (keep.size >= MAX_NODES) break;
+    }
+    frontier = next;
+  }
+  return keep;
+}
+
+function sliceBoundaries() {
+  // client executable -> mach service <- provider service, where the client is
+  // not privileged and the provider is.
+  const providerOf = new Map();
+  G.edges.forEach(e => { if (ET[e[2]] === "PROVIDES") providerOf.set(e[1], e[0]); });
+  const keep = new Set();
+  const scored = [];
+  G.edges.forEach(e => {
+    if (ET[e[2]] !== "LOOKS_UP") return;
+    const mach = e[1], client = e[0], provider = providerOf.get(mach);
+    if (provider === undefined) return;
+    if (!gPriv(provider) || gPriv(client) || !gEnabled(provider)) return;
+    scored.push([gScore(provider), client, mach, provider]);
+  });
+  scored.sort((a, b) => b[0] - a[0]);
+  // Cap on *providers*, not nodes: the highest-scoring daemons with a crossing,
+  // each with its endpoints and clients. Past ~40 the picture is a hairball.
+  const providers = new Set();
+  for (const [, client, mach, provider] of scored) {
+    if (!providers.has(provider) && providers.size >= 40) continue;
+    providers.add(provider);
+    if (keep.size + 3 > MAX_NODES) break;
+    keep.add(client); keep.add(mach); keep.add(provider);
+  }
+  return keep;
+}
+
+function sliceTop(limit) {
+  const services = [];
+  for (let i = 0; i < G.nodes.length; i++)
+    if (gType(i) === "LaunchService" && gEnabled(i)) services.push(i);
+  services.sort((a, b) => gScore(b) - gScore(a));
+  const keep = new Set();
+  for (const svc of services.slice(0, limit)) {
+    if (keep.size >= MAX_NODES) break;
+    keep.add(svc);
+    for (const ei of GADJ[svc]) {
+      const e = G.edges[ei];
+      if (ET[e[2]] !== "PROVIDES") continue;
+      keep.add(e[1]);
+      for (const ej of GADJ[e[1]]) {
+        const e2 = G.edges[ej];
+        if (ET[e2[2]] === "LOOKS_UP" && keep.size < MAX_NODES) keep.add(e2[0]);
+      }
+    }
+  }
+  return keep;
+}
+
+function buildSlice() {
+  let keep;
+  if (EX.mode === "boundaries") keep = sliceBoundaries();
+  else if (EX.mode === "top") keep = sliceTop(25);
+  else keep = EX.root === null ? new Set() : sliceFocus(EX.root, EX.depth);
+
+  const list = [...keep];
+  EX.byIndex = new Map(list.map((idx, i) => [idx, i]));
+  const stage = $("#exCanvas");
+  const w = stage.clientWidth || 900, h = stage.clientHeight || 600;
+  EX.nodes = list.map((idx, i) => {
+    const angle = (i / Math.max(1, list.length)) * Math.PI * 2;
+    const radius = idx === EX.root ? 0 : 120 + (i % 7) * 34;
+    return { idx, x: w / 2 + Math.cos(angle) * radius, y: h / 2 + Math.sin(angle) * radius,
+             vx: 0, vy: 0, r: gType(idx) === "LaunchService" ? (gPriv(idx) ? 7 : 5.5)
+                            : gType(idx) === "MachService" ? 4.5 : 4 };
+  });
+  EX.links = [];
+  G.edges.forEach(e => {
+    if (!EX.edges.has(ET[e[2]])) return;
+    const a = EX.byIndex.get(e[0]), b = EX.byIndex.get(e[1]);
+    if (a === undefined || b === undefined) return;
+    EX.links.push({ a, b, type: ET[e[2]], evidence: e[3] });
+  });
+  if (EX.mode === "focus") {
+    EX.alpha = 1;
+  } else {
+    layoutLayered();
+  }
+  fitView();
+  tick();
+  const crossings = EX.links.filter(l => l.type === "LOOKS_UP").length;
+  $("#exStat").innerHTML = `<b>${EX.nodes.length}</b> nodes · <b>${EX.links.length}</b> edges` +
+    (crossings ? ` · <b>${crossings}</b> lookup edges` : "") +
+    (EX.nodes.length >= MAX_NODES ? ` · capped at ${MAX_NODES}` : "");
+}
+
+/* ---- layered layout ----
+   A force layout answers "what is near what"; the boundary question is
+   directional — client, endpoint, provider — so those modes get columns
+   instead of a hairball. */
+function layoutLayered() {
+  const machOf = new Map();      // provider -> its Mach nodes in the slice
+  const clientsOf = new Map();   // mach -> client nodes in the slice
+  const push = (map, key, value) => {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(value);
+  };
+  for (const l of EX.links) {
+    const a = EX.nodes[l.a].idx, b = EX.nodes[l.b].idx;
+    if (l.type === "PROVIDES") push(machOf, a, b);
+    if (l.type === "LOOKS_UP") push(clientsOf, b, a);
+  }
+
+  const providers = [...machOf.keys()].sort((x, y) => gScore(y) - gScore(x));
+  const ROW = 30, COL_CLIENT = 300, COL_MACH = 640, COL_SVC = 1050;
+  const yOf = new Map();
+  const placedClients = new Map();   // client -> its single row
+  let row = 0;
+
+  // A client shared by several providers gets one row, not one per provider —
+  // otherwise the ladder is mostly blank space.
+  for (const provider of providers) {
+    const machY = [];
+    for (const mach of [...new Set(machOf.get(provider) || [])]) {
+      const clients = [...new Set(clientsOf.get(mach) || [])];
+      const rows = [];
+      for (const client of clients) {
+        if (!placedClients.has(client)) {
+          placedClients.set(client, row);
+          yOf.set(client, row * ROW);
+          row += 1;
+        }
+        rows.push(placedClients.get(client));
+      }
+      if (!rows.length) { rows.push(row); row += 1; }
+      const centre = (rows.reduce((a, b) => a + b, 0) / rows.length) * ROW;
+      yOf.set(mach, centre);
+      machY.push(centre);
+    }
+    yOf.set(provider, machY.reduce((a, b) => a + b, 0) / Math.max(1, machY.length));
+    row += 1;                                        // a blank line between providers
+  }
+
+  let free = row;
+  for (const node of EX.nodes) {
+    const type = gType(node.idx);
+    const x = type === "MachService" ? COL_MACH
+            : type === "LaunchService" ? COL_SVC
+            : placedClients.has(node.idx) ? COL_CLIENT : COL_SVC + 260;
+    let y = yOf.get(node.idx);
+    if (y === undefined) { y = free * ROW; free += 1; }
+    node.x = x; node.y = y; node.vx = node.vy = 0;
+  }
+  EX.alpha = 0;
+}
+
+/* ---- force simulation ---- */
+function step() {
+  const nodes = EX.nodes, links = EX.links, n = nodes.length;
+  if (!n) return;
+  const stage = $("#exCanvas");
+  const cx = (stage.clientWidth || 900) / 2, cy = (stage.clientHeight || 600) / 2;
+  // Repulsion has to grow with the node count or a large slice collapses into
+  // an unreadable ball.
+  const repel = 2200 + 34 * n, k = 0.035;
+  for (let i = 0; i < n; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { d2 = 1; dx = (Math.random() - .5); dy = (Math.random() - .5); }
+      if (d2 > 250000) continue;                   // ignore distant pairs
+      const f = repel / d2, d = Math.sqrt(d2);
+      const fx = (dx / d) * f, fy = (dy / d) * f;
+      a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
+    }
+    a.vx += (cx - a.x) * 0.0016;
+    a.vy += (cy - a.y) * 0.0016;
+  }
+  for (const l of links) {
+    const a = nodes[l.a], b = nodes[l.b];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.max(1, Math.hypot(dx, dy));
+    const rest = l.type === "PROVIDES" ? 62 : l.type === "LAUNCHED_BY" ? 46 : 150;
+    const f = (d - rest) * k;
+    const fx = (dx / d) * f, fy = (dy / d) * f;
+    a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+  }
+  for (const node of nodes) {
+    if (node === EX.drag) { node.vx = node.vy = 0; continue; }
+    node.vx *= 0.82; node.vy *= 0.82;
+    node.x += node.vx * EX.alpha; node.y += node.vy * EX.alpha;
+  }
+  EX.alpha *= 0.985;
+}
+
+function tick() {
+  if (EX.raf) cancelAnimationFrame(EX.raf);
+  const loop = () => {
+    if (!EX.open) return;
+    if ((EX.alpha > 0.02 || EX.drag) && EX.mode === "focus") step();
+    draw();
+    EX.raf = requestAnimationFrame(loop);
+  };
+  EX.raf = requestAnimationFrame(loop);
+}
+
+/* ---- rendering ---- */
+function draw() {
+  const canvas = $("#exCanvas"), ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr; canvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.translate(EX.tx, EX.ty); ctx.scale(EX.scale, EX.scale);
+
+  const focus = EX.hover !== null ? EX.hover : EX.selected;
+  const near = new Set();
+  if (focus !== null) {
+    near.add(focus);
+    EX.links.forEach(l => { if (l.a === focus) near.add(l.b); else if (l.b === focus) near.add(l.a); });
+  }
+
+  for (const l of EX.links) {
+    const a = EX.nodes[l.a], b = EX.nodes[l.b];
+    const lit = focus === null || near.has(l.a) && near.has(l.b);
+    ctx.strokeStyle = ECOL[l.type] || "#46536a";
+    ctx.globalAlpha = lit ? (l.type === "LOOKS_UP" ? .85 : .55) : .12;
+    ctx.lineWidth = l.type === "LOOKS_UP" ? 1.3 : 1;
+    ctx.setLineDash(l.evidence === 2 ? [4, 3] : []);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Label policy: in a small slice label everything, in a crowded one label the
+  // services that carry the weight, and always label whatever is in focus.
+  // Layered positions are stable and evenly spaced, so everything can be
+  // labelled there; only a force layout gets crowded.
+  const dense = EX.mode === "focus" && EX.nodes.length > 110;
+  const labels = [];
+  for (let i = 0; i < EX.nodes.length; i++) {
+    const node = EX.nodes[i], type = gType(node.idx);
+    const lit = focus === null || near.has(i);
+    ctx.globalAlpha = lit ? 1 : .3;
+    ctx.fillStyle = NCOL[type] || "#8b98aa";
+    ctx.beginPath();
+    if (type === "MachService") {
+      ctx.rect(node.x - node.r, node.y - node.r * .72, node.r * 2, node.r * 1.44);
+    } else {
+      ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    if (!gEnabled(node.idx)) {                       // disabled jobs are hollow
+      ctx.globalAlpha = lit ? 1 : .3;
+      ctx.fillStyle = "#07090c";
+      ctx.beginPath(); ctx.arc(node.x, node.y, Math.max(1.4, node.r - 2.2), 0, Math.PI * 2); ctx.fill();
+    }
+    if (node.idx === EX.root || i === EX.selected) {
+      ctx.strokeStyle = "#dfe6ef"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(node.x, node.y, node.r + 3.5, 0, Math.PI * 2); ctx.stroke();
+    }
+    const focused = focus !== null && near.has(i);
+    const worth = !dense ? EX.scale > 0.42
+                 : type === "LaunchService" && (gScore(node.idx) >= 100 || EX.scale > 1.15);
+    if (focused || (focus === null && worth)) labels.push([i, node, type, focused]);
+  }
+
+  for (const [i, node, type, focused] of labels) {
+    ctx.globalAlpha = focused ? 1 : .72;
+    ctx.font = `${type === "LaunchService" ? 11 : 10}px "SF Mono", Menlo, monospace`;
+    // Client labels sit left of their column so they read inward, towards the
+    // endpoint they name.
+    const leftward = EX.mode !== "focus" && type === "Executable";
+    const raw = type === "Executable" ? gLabel(node.idx).split("/").pop() : gLabel(node.idx);
+    const text = shorten(raw, focused ? 40 : 30);
+    const w = ctx.measureText(text).width;
+    const x = leftward ? node.x - node.r - 4 - w : node.x + node.r + 4;
+    if (focused) {                                   // keep focused labels legible
+      ctx.fillStyle = "rgba(7,9,12,.82)";
+      ctx.fillRect(x - 3, node.y - 6, w + 6, 13);
+    }
+    ctx.fillStyle = i === focus ? "#ffffff" : focused ? "#dfe6ef" : "#93a0b1";
+    ctx.fillText(text, x, node.y + 3.5);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
+  if (EX.mode !== "focus" && EX.nodes.length) {
+    const cols = [["client", 300], ["mach service", 640], ["provider (root)", 1050]];
+    ctx.save();
+    ctx.font = '10px "SF Mono", Menlo, monospace';
+    ctx.fillStyle = "#5b6879";
+    for (const [name, x] of cols) {
+      const sx = x * EX.scale + EX.tx;
+      ctx.fillText(name.toUpperCase(), sx, 18);
+      ctx.strokeStyle = "rgba(91,104,121,.25)";
+      ctx.beginPath(); ctx.moveTo(sx, 24); ctx.lineTo(sx, h); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function fitView() {
+  if (!EX.nodes.length) return;
+  const canvas = $("#exCanvas");
+  const w = canvas.clientWidth || 900, h = canvas.clientHeight || 600;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const node of EX.nodes) {
+    minX = Math.min(minX, node.x); maxX = Math.max(maxX, node.x);
+    minY = Math.min(minY, node.y); maxY = Math.max(maxY, node.y);
+  }
+  const pad = 90;
+  if (EX.mode === "focus") {
+    EX.scale = Math.min(2, Math.max(.12, Math.min((w - pad) / Math.max(1, maxX - minX),
+                                                  (h - pad) / Math.max(1, maxY - minY))));
+    EX.tx = w / 2 - ((minX + maxX) / 2) * EX.scale;
+    EX.ty = h / 2 - ((minY + maxY) / 2) * EX.scale;
+    return;
+  }
+  // A layered slice is tall and narrow: fit its width at a readable scale and
+  // let the reader scroll down the ladder rather than shrinking it to nothing.
+  EX.scale = Math.min(1.2, Math.max(.4, (w - pad) / Math.max(1, maxX - minX)));
+  EX.tx = w / 2 - ((minX + maxX) / 2) * EX.scale;
+  EX.ty = 60 - minY * EX.scale;
+}
+
+/* ---- interaction ---- */
+function exPoint(event) {
+  const rect = $("#exCanvas").getBoundingClientRect();
+  return { x: (event.clientX - rect.left - EX.tx) / EX.scale,
+           y: (event.clientY - rect.top - EX.ty) / EX.scale };
+}
+function exNodeAt(pt) {
+  for (let i = EX.nodes.length - 1; i >= 0; i--) {
+    const node = EX.nodes[i];
+    if (Math.hypot(node.x - pt.x, node.y - pt.y) <= node.r + 5) return i;
+  }
+  return null;
+}
+
+function exSelect(i) {
+  EX.selected = i;
+  const panel = $("#exInfo");
+  if (i === null) { panel.classList.remove("open"); return; }
+  const idx = EX.nodes[i].idx, type = gType(idx), label = gLabel(idx);
+  const rows = [];
+  if (type === "LaunchService") {
+    rows.push(["score", gScore(idx)], ["runs as", gPriv(idx) ? "root" : "non-root"],
+              ["state", gEnabled(idx) ? "enabled" : "disabled"],
+              ["caller validation", gValidation(idx)]);
+  }
+  const counts = {};
+  for (const ei of GADJ[idx]) {
+    const e = G.edges[ei];
+    const key = (e[0] === idx ? "→ " : "← ") + ET[e[2]];
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  const target = T.find(t => t.label === label);
+  panel.innerHTML = `
+    <div class="kind">${esc(type)}</div>
+    <h4>${esc(label)}</h4>
+    ${rows.map(([k, v]) => `<div class="row"><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("")}
+    <div class="row" style="margin-top:8px"><span class="kind">edges</span><span></span></div>
+    ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+      `<div class="row"><span>${esc(k)}</span><span>${v}</span></div>`).join("")}
+    <div class="acts">
+      <button data-act="focus">Focus here</button>
+      <button data-act="expand">Expand</button>
+      ${target ? '<button data-act="dossier">Open dossier</button>' : ""}
+    </div>`;
+  panel.classList.add("open");
+  panel.querySelectorAll("[data-act]").forEach(btn => btn.addEventListener("click", () => {
+    const act = btn.dataset.act;
+    if (act === "focus") { EX.mode = "focus"; $("#exMode").value = "focus"; EX.root = idx; buildSlice(); }
+    else if (act === "expand") exExpand(idx);
+    else if (act === "dossier") { exClose(); openDrawer(target); }
+  }));
+}
+
+function exExpand(idx) {
+  // Pull in this node's neighbours without rebuilding the whole slice.
+  const canvas = $("#exCanvas");
+  const origin = EX.nodes[EX.byIndex.get(idx)] || { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 };
+  for (const ei of GADJ[idx]) {
+    const e = G.edges[ei];
+    if (!EX.edges.has(ET[e[2]])) continue;
+    const other = e[0] === idx ? e[1] : e[0];
+    if (!EX.byIndex.has(other)) {
+      if (EX.nodes.length >= MAX_NODES) break;
+      EX.byIndex.set(other, EX.nodes.length);
+      EX.nodes.push({ idx: other, x: origin.x + (Math.random() - .5) * 60,
+                      y: origin.y + (Math.random() - .5) * 60, vx: 0, vy: 0,
+                      r: gType(other) === "LaunchService" ? (gPriv(other) ? 7 : 5.5) : 4.5 });
+    }
+    const a = EX.byIndex.get(e[0]), b = EX.byIndex.get(e[1]);
+    if (a !== undefined && b !== undefined &&
+        !EX.links.some(l => l.a === a && l.b === b && l.type === ET[e[2]]))
+      EX.links.push({ a, b, type: ET[e[2]], evidence: e[3] });
+  }
+  EX.alpha = 0.9;
+  $("#exStat").innerHTML = `<b>${EX.nodes.length}</b> nodes · <b>${EX.links.length}</b> edges`;
+}
+
+function exOpen(label) {
+  $("#explorer").classList.add("open");
+  $("#explorer").setAttribute("aria-hidden", "false");
+  EX.open = true;
+  if (label) {
+    const idx = gFind(label);
+    if (idx !== null) { EX.root = idx; EX.mode = "focus"; $("#exMode").value = "focus"; $("#exSearch").value = label; }
+  }
+  if (EX.root === null && EX.mode === "focus") { EX.mode = "boundaries"; $("#exMode").value = "boundaries"; }
+  requestAnimationFrame(() => buildSlice());
+}
+function exClose() {
+  EX.open = false;
+  $("#explorer").classList.remove("open");
+  $("#explorer").setAttribute("aria-hidden", "true");
+  if (EX.raf) cancelAnimationFrame(EX.raf);
+}
+
+function initExplorer() {
+  $("#exEdgeTogs").innerHTML = ET.map(t =>
+    `<span class="extog on" data-edge="${t}"><i style="background:${ECOL[t]}"></i>${t.toLowerCase().replace(/_/g, " ")}</span>`).join(" ");
+  $("#exEdgeTogs").querySelectorAll("[data-edge]").forEach(el => el.addEventListener("click", () => {
+    const type = el.dataset.edge;
+    EX.edges.has(type) ? EX.edges.delete(type) : EX.edges.add(type);
+    el.classList.toggle("on", EX.edges.has(type));
+    buildSlice();
+  }));
+  $("#exLegend").innerHTML = NT.map(t =>
+    `<div><b style="background:${NCOL[t]}"></b>${t.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}</div>`).join("") +
+    '<div style="margin-top:4px;color:var(--text-3)">dashed edge = string evidence · hollow = disabled</div>';
+
+  $("#openGraph").addEventListener("click", () => exOpen(null));
+  $("#exClose").addEventListener("click", exClose);
+  $("#exFit").addEventListener("click", () => { fitView(); });
+  $("#exMode").addEventListener("change", e => { EX.mode = e.target.value; buildSlice(); });
+  $("#exDepth").addEventListener("input", e => {
+    EX.depth = +e.target.value; $("#exDepthN").textContent = EX.depth;
+    if (EX.mode === "focus") buildSlice();
+  });
+  $("#exSearch").addEventListener("change", e => {
+    const idx = gFind(e.target.value);
+    if (idx === null) return;
+    EX.root = idx; EX.mode = "focus"; $("#exMode").value = "focus"; buildSlice();
+  });
+
+  const canvas = $("#exCanvas");
+  canvas.addEventListener("mousedown", e => {
+    const pt = exPoint(e), i = exNodeAt(pt);
+    if (i !== null) { EX.drag = EX.nodes[i]; EX.alpha = Math.max(EX.alpha, .5); }
+    else { EX.panning = { x: e.clientX - EX.tx, y: e.clientY - EX.ty }; canvas.classList.add("dragging"); }
+  });
+  canvas.addEventListener("mousemove", e => {
+    if (EX.drag) { const pt = exPoint(e); EX.drag.x = pt.x; EX.drag.y = pt.y; return; }
+    if (EX.panning) { EX.tx = e.clientX - EX.panning.x; EX.ty = e.clientY - EX.panning.y; return; }
+    const i = exNodeAt(exPoint(e));
+    if (i !== EX.hover) {
+      EX.hover = i;
+      canvas.title = i === null ? "" : gLabel(EX.nodes[i].idx);
+    }
+  });
+  addEventListener("mouseup", e => {
+    if (EX.drag) { EX.drag = null; EX.alpha = Math.max(EX.alpha, .3); }
+    if (EX.panning) { EX.panning = null; canvas.classList.remove("dragging"); }
+  });
+  canvas.addEventListener("click", e => {
+    const i = exNodeAt(exPoint(e));
+    exSelect(i);
+  });
+  canvas.addEventListener("dblclick", e => {
+    const i = exNodeAt(exPoint(e));
+    if (i !== null) exExpand(EX.nodes[i].idx);
+  });
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const next = Math.min(4, Math.max(.08, EX.scale * factor));
+    EX.tx = mx - (mx - EX.tx) * (next / EX.scale);
+    EX.ty = my - (my - EX.ty) * (next / EX.scale);
+    EX.scale = next;
+  }, { passive: false });
+}
+
 /* ---------- trust-boundary neighbourhood ---------- */
 function neighbourhoodPanel(t) {
   const h = t.hood;
@@ -859,8 +1490,10 @@ function neighbourhoodPanel(t) {
       const colour = c.privileged ? "#ff6b5e" : "#4fd6e0";
       svg += `<line x1="${colC}" y1="${y - 4}" x2="${colM}" y2="${y - 4}" stroke="${colour}" stroke-width="1"
                 ${c.evidence === "string" ? 'stroke-dasharray="3 3"' : ""} opacity=".55"/>`;
+      svg += `<g class="hit" data-open="${esc(c.label)}">`;
       svg += `<text x="${colC - 8}" y="${y}" text-anchor="end" class="gl" fill="${colour}">${esc(c.label)}</text>`;
       svg += `<text x="${colC - 8}" y="${y + 10}" text-anchor="end" class="gs">${esc(c.run_as)} · ${esc(c.evidence)}</text>`;
+      svg += `</g>`;
       y += ROW;
     });
     if (p.clients.length > shown.length)
@@ -1023,6 +1656,8 @@ function openDrawer(t) {
       ${list(objc, l => `<li><code>${esc(l)}</code></li>`)}</details>
     <div class="dim" style="margin-top:12px">imported symbols: ${mo.imported_symbols_count ?? "?"} · exported: ${mo.exported_symbols_count ?? "?"}</div>
   `;
+  $("#d-body").querySelectorAll(".hoodsvg [data-open]").forEach(g =>
+    g.addEventListener("click", () => { closeDrawer(); exOpen(g.dataset.open); }));
   $("#drawer").classList.add("open");
   $("#drawer").setAttribute("aria-hidden", "false");
   $("#scrim").classList.add("open");
@@ -1128,10 +1763,19 @@ function init() {
   });
 
   $("#csv").addEventListener("click", exportCsv);
+  initExplorer();
   $("#dclose").addEventListener("click", closeDrawer);
+  $("#dgraph").addEventListener("click", () => {
+    const t = S.selected === null ? null : T[S.selected];
+    if (t) { closeDrawer(); exOpen(t.label); }
+  });
   $("#scrim").addEventListener("click", closeDrawer);
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeDrawer();
+    if (e.key === "Escape") { if (EX.open) exClose(); else closeDrawer(); }
+    if (e.key.toLowerCase() === "g" && !e.metaKey && !e.ctrlKey &&
+        document.activeElement.tagName !== "INPUT") {
+      EX.open ? exClose() : exOpen(S.selected !== null ? T[S.selected].label : null);
+    }
     if (e.key === "/" && document.activeElement !== $("#q")) { e.preventDefault(); $("#q").focus(); }
   });
   addEventListener("resize", () => { chartHist(); chartDonut(); chartSinks(); chartIpc(); chartFindings(); chartTop(); });
@@ -1221,6 +1865,61 @@ def _neighbourhoods(graph: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+# The explorer only carries the trust core: who runs, who provides, who looks up
+# and which subsystems are touched. Entitlement and framework nodes are 4,500 of
+# the 8,125 and 31,000 of the edges, and they belong in the dossier, not in a
+# reachability picture.
+_CORE_NODE_TYPES = ("LaunchService", "Executable", "MachService", "SecuritySubsystem")
+_CORE_EDGE_TYPES = ("LAUNCHED_BY", "PROVIDES", "LOOKS_UP", "ACCESSES_SUBSYSTEM")
+_VALIDATION_ORDER = ("NONE_OBSERVED", "WEAK", "MEDIUM", "STRONG")
+
+
+def _graph_core(graph: Dict[str, Any]) -> Dict[str, Any]:
+    """A compact, index-encoded core graph small enough to embed and explore.
+
+    Nodes and edges become integer-indexed arrays: the same data as
+    ``graph.json`` for these types, at a fraction of the bytes.
+    """
+    keep = {n["id"]: n for n in graph.get("nodes") or [] if n.get("type") in _CORE_NODE_TYPES}
+    edges = [e for e in graph.get("edges") or []
+             if e.get("type") in _CORE_EDGE_TYPES
+             and e.get("source") in keep and e.get("target") in keep]
+    used = {e["source"] for e in edges} | {e["target"] for e in edges}
+
+    index: Dict[str, int] = {}
+    nodes: List[List[Any]] = []
+    for node_id, node in keep.items():
+        if node_id not in used:
+            continue
+        data = node.get("data") or {}
+        index[node_id] = len(nodes)
+        nodes.append([
+            _CORE_NODE_TYPES.index(node["type"]),
+            node.get("label", node_id),
+            int(data.get("score") or 0),
+            1 if data.get("privileged") else 0,
+            0 if data.get("enabled") is False else 1,
+            _VALIDATION_ORDER.index(data["validation"])
+            if data.get("validation") in _VALIDATION_ORDER else 0,
+        ])
+
+    out_edges = []
+    for e in edges:
+        evidence = (e.get("data") or {}).get("evidence")
+        out_edges.append([
+            index[e["source"]], index[e["target"]],
+            _CORE_EDGE_TYPES.index(e["type"]),
+            {"entitlement": 1, "string": 2}.get(evidence, 0),
+        ])
+    return {
+        "node_types": list(_CORE_NODE_TYPES),
+        "edge_types": list(_CORE_EDGE_TYPES),
+        "validation": list(_VALIDATION_ORDER),
+        "nodes": nodes,
+        "edges": out_edges,
+    }
+
+
 def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
     """Strip the payload down to what the HTML actually shows."""
     out = {k: v for k, v in report.items() if k not in ("targets", "graph")}
@@ -1242,6 +1941,7 @@ def _view_model(report: Dict[str, Any]) -> Dict[str, Any]:
                 "looked_for": miss.get("looked_for", ""),
             })
     out["validation_classes"] = classes
+    out["core_graph"] = _graph_core(graph)
     targets = []
     for t in report.get("targets") or []:
         t2 = dict(t)

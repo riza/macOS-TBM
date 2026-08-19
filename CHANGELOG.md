@@ -8,6 +8,13 @@ All notable changes to macOS-TBM are documented here. This project follows
 
 ### Added
 
+- **An interactive graph explorer in the HTML report.** The trust core (3,597
+  nodes, 7,137 edges) is index-encoded into ~290 KB and rendered on a canvas
+  with three modes: a layered boundary-crossing ladder (client → Mach service →
+  root provider), a force-directed neighbourhood around one entity, and the top
+  targets by score. Pan, zoom, drag, expand on double-click, filter by edge
+  type, and jump to a dossier from any node. Opens with the Graph button, `g`,
+  or from a dossier.
 - **`tbm graph`** queries the trust-boundary graph instead of dumping it:
   `--node` for a neighbourhood, `--path A B` for the routes between two
   entities, `--boundaries` for every non-root client naming a root daemon's

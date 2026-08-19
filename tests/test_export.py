@@ -145,3 +145,61 @@ class TestWrittenFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCoreGraphForTheExplorer(unittest.TestCase):
+    """The page embeds an index-encoded core graph, not the whole thing."""
+
+    def _graph(self):
+        return {
+            "nodes": [
+                {"id": "service:d", "type": "LaunchService", "label": "d",
+                 "data": {"privileged": True, "enabled": True, "score": 90, "validation": "WEAK"}},
+                {"id": "exec:/d", "type": "Executable", "label": "/d", "data": {"privileged": True}},
+                {"id": "mach:m", "type": "MachService", "label": "m", "data": {}},
+                {"id": "ent:e", "type": "Entitlement", "label": "e", "data": {}},
+                {"id": "fw:F", "type": "Framework", "label": "F", "data": {}},
+            ],
+            "edges": [
+                {"source": "exec:/d", "target": "service:d", "type": "LAUNCHED_BY", "data": {}},
+                {"source": "service:d", "target": "mach:m", "type": "PROVIDES", "data": {}},
+                {"source": "exec:/d", "target": "ent:e", "type": "HAS_ENTITLEMENT", "data": {}},
+                {"source": "exec:/d", "target": "fw:F", "type": "LINKS_TO", "data": {}},
+            ],
+        }
+
+    def test_entitlement_and_framework_nodes_are_left_out(self):
+        from reporting.html_report import _graph_core
+        core = _graph_core(self._graph())
+        labels = {n[1] for n in core["nodes"]}
+        self.assertEqual(labels, {"d", "/d", "m"})
+        self.assertEqual(len(core["edges"]), 2)
+
+    def test_edges_reference_nodes_by_index(self):
+        from reporting.html_report import _graph_core
+        core = _graph_core(self._graph())
+        for src, dst, etype, _evidence in core["edges"]:
+            self.assertLess(src, len(core["nodes"]))
+            self.assertLess(dst, len(core["nodes"]))
+            self.assertLess(etype, len(core["edge_types"]))
+
+    def test_service_rows_carry_what_the_explorer_shows(self):
+        from reporting.html_report import _graph_core
+        core = _graph_core(self._graph())
+        row = next(n for n in core["nodes"] if n[1] == "d")
+        self.assertEqual(core["node_types"][row[0]], "LaunchService")
+        self.assertEqual(row[2], 90)          # score
+        self.assertEqual(row[3], 1)           # privileged
+        self.assertEqual(row[4], 1)           # enabled
+        self.assertEqual(core["validation"][row[5]], "WEAK")
+
+    def test_lookup_evidence_survives_the_encoding(self):
+        from reporting.html_report import _graph_core
+        data = self._graph()
+        data["nodes"].append({"id": "exec:/c", "type": "Executable", "label": "/c",
+                              "data": {"privileged": False}})
+        data["edges"].append({"source": "exec:/c", "target": "mach:m", "type": "LOOKS_UP",
+                              "data": {"evidence": "entitlement"}})
+        core = _graph_core(data)
+        lookup = next(e for e in core["edges"] if core["edge_types"][e[2]] == "LOOKS_UP")
+        self.assertEqual(lookup[3], 1)        # 1 == entitlement, 2 == string
