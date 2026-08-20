@@ -8,6 +8,47 @@ All notable changes to macOS-TBM are documented here. This project follows
 
 ### Added
 
+- **Full dossiers in the terminal.** `tbm scan` (without `-out`) and the `tui`
+  detail pane now render the same sections as the HTML dossier from the same
+  report fields: launchd metadata, code signing, why it is interesting, score
+  contributors, sensitive-subsystem evidence, the caller-validation table
+  (observed classes and the ones not observed, with what was looked for), every
+  entitlement with private ones first, checked entitlements, findings with
+  evidence, research questions, and binary detail. `--detail` prints them,
+  `--detail-limit` caps the number of dossiers, and
+  `--list-limit` caps long Mach-O lists inside one (`0` = no cap; the number
+  withheld is always printed). The Textual dashboard gained a scrollable dossier
+  pane (`tab`), a full-width toggle (`f`), and live updates as the row cursor
+  moves; the non-interactive Rich view gained `tui --detail`.
+
+### Changed
+
+- **`scan` saves instead of flooding the terminal.** Without `-out` it now
+  writes to `./results` — `report.json`, `report.html`, the graph exports and
+  `scan.txt`, which holds the complete terminal report including every
+  per-target dossier — and prints the summary plus the list of files written.
+  `--detail` prints the dossiers in the terminal as well. `--json` remains the
+  one mode that writes nothing and streams the report to stdout, and
+  `--html` / `--graph` no longer require `-out`.
+- **One palette across every view.** The dashboard table now uses the dossier's
+  colours — priority red / yellow / green, and caller validation green where
+  evidence was observed, yellow where it was not, so `NONE_OBSERVED` no longer
+  reads as reassuring — with zebra rows, a cyan header and a cyan cursor. Rich
+  output also keeps colour when it writes to a terminal; files and pipes stay
+  plain, so `scan.txt` and piped output are unchanged.
+- **One aligned column layout for the dossier.** Every section is now the same
+  two-column grid — an 18-wide tag column and a folding body — so field names,
+  evidence kinds, weights, bullets and entitlement markers line up down the
+  whole dossier instead of shifting per section. Score bars are dot-padded to a
+  fixed width so they share both edges.
+- **A simpler dashboard.** The Textual header and the duplicated key-hint strip
+  are gone; the `tbm` logo, version, counters and active filters sit centred at
+  the top, search spans the width, and the target table keeps four fixed-width
+  columns (score, priority, validation, service) with the rest of the width
+  going to the dossier. The table starts on the same column as the search box
+  and runs the full height of the screen: it now lists every target that passes
+  the filters and scrolls, so `tui --limit` caps only the non-interactive view.
+
 - **`tbm probe`** — the one *active* (non-read-only) command: it connects to
   every root Mach service in a report as an unprivileged client and classifies
   reachability (`spawn`, `connect-alive`, `empty-interrupted`,

@@ -1,0 +1,6 @@
+interface:
+  display_name: "macOS Trust Boundary Mapper"
+  short_description: "Scan and explain macOS trust boundaries"
+  default_prompt: "Use $macos-tbm to analyze this repository's scan, rules, CLI, or trust-boundary report."
+policy:
+  allow_implicit_invocation: true

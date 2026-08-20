@@ -3,6 +3,7 @@
 
 Usage:
     python3 tbm.py scan [--output ./results] [--json] [--html] [--graph] [--verbose]
+    python3 tbm.py tui [--report ./results/report.json]
     python3 tbm.py inspect /usr/libexec/exampled
     python3 tbm.py service com.apple.example
 
@@ -21,6 +22,7 @@ import sys
 from typing import List, Optional
 
 from collectors import discover_services, inspect_codesign, inspect_macho
+from app_info import version_string
 from graph.exporters import export_dot, export_json, export_mermaid
 from graph.query import (
     TrustGraph,
@@ -35,14 +37,25 @@ from reporting.export import export_report
 from reporting.html_report import write_html_report
 from reporting.json_report import build_report, write_json_report
 from scanner import analyze_service, run_scan
+from ui import (LIST_LIMIT, ScanProgress, configure_logging, print_banner,
+                render_scan_cli, render_scan_result, render_tui, run_tui_app)
 from utils.commands import ResultCache, run
+from utils.jsonio import dumps as json_dumps
+
+
+def _write_output(output: str, destination: Optional[str]) -> None:
+    """Write command output to stdout or a file, without polluting pipelines."""
+    if destination is None:
+        print(output)
+        return
+    os.makedirs(os.path.dirname(os.path.abspath(destination)), exist_ok=True)
+    with open(destination, "w", encoding="utf-8") as fh:
+        fh.write(output + "\n")
+    print(f"  {destination}")
 
 
 def _setup_logging(verbose: bool) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-    )
+    configure_logging(verbose, interactive=sys.stderr.isatty())
 
 
 def _apply_filters(targets: List, args: argparse.Namespace) -> List:
@@ -66,16 +79,31 @@ def _apply_filters(targets: List, args: argparse.Namespace) -> List:
     return out
 
 
+# A scan without -out still saves its work; only an explicit --json pipe does not.
+DEFAULT_OUTDIR = "./results"
+# Width of the saved text report: wide enough for paths, narrow enough to read.
+RAW_WIDTH = 120
+
+
 def _cmd_scan(args: argparse.Namespace) -> int:
     _setup_logging(args.verbose)
-    outdir = args.output or "./results"
+    stdout_output = args.output is None and args.json
+    outdir = args.output or DEFAULT_OUTDIR
 
     def progress(done: int, total: int) -> None:
-        if not args.verbose and total and sys.stdout.isatty():
+        if not args.verbose and total and not stdout_output and sys.stdout.isatty():
             print(f"\r  analyzing executables: {done}/{total}", end="", flush=True)
 
-    targets = run_scan(scope=args.scope, workers=args.workers, verbose=args.verbose, progress=progress)
-    if progress:
+    progress_enabled = not stdout_output and sys.stderr.isatty()
+    with ScanProgress("rich", enabled=progress_enabled, stream=sys.stderr) as scan_progress:
+        progress_callback = scan_progress.update
+        if not scan_progress.enabled:
+            progress_callback = progress
+        targets = run_scan(
+            scope=args.scope, workers=args.workers, verbose=args.verbose,
+            progress=progress_callback,
+        )
+    if not stdout_output:
         print()
 
     targets = _apply_filters(targets, args)
@@ -90,19 +118,25 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     }
     report = build_report(targets, graph, meta={"scope": args.scope, "filters": filter_meta})
 
-    os.makedirs(outdir, exist_ok=True)
+    s = report["summary"]
+    if stdout_output:
+        _write_output(json_dumps(report), args.output)
+        render_scan_result(s, output_dir=outdir, stream=sys.stderr)
+        return 0
 
+    os.makedirs(outdir, exist_ok=True)
     want_json = args.json or not (args.html or args.graph)
     want_html = args.html or not (args.json or args.graph)
     want_graph = args.graph or not (args.json or args.html)
 
+    artifacts = []
     if want_json:
         write_json_report(os.path.join(outdir, "report.json"), report)
-        print(f"  report.json -> {outdir}")
+        artifacts.append("report.json")
     if want_html:
         # write_html_report slims the payload itself and uses the graph for counts
         write_html_report(os.path.join(outdir, "report.html"), report)
-        print(f"  report.html -> {outdir}")
+        artifacts.append("report.html")
     if want_graph:
         with open(os.path.join(outdir, "graph.json"), "w", encoding="utf-8") as fh:
             fh.write(export_json(graph))
@@ -110,13 +144,22 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             fh.write(export_dot(graph))
         with open(os.path.join(outdir, "graph.mmd"), "w", encoding="utf-8") as fh:
             fh.write(export_mermaid(graph))
-        print(f"  graph.json / graph.dot / graph.mmd -> {outdir}")
+        artifacts.append("graph.json / graph.dot / graph.mmd")
 
-    s = report["summary"]
-    print(
-        f"\nDone. {s['total_services']} services, {s['privileged_services']} privileged, "
-        f"{s['mach_xpc_services']} Mach/XPC, {s['high_priority_targets']} high-priority."
-    )
+    # The terminal view is saved verbatim, so the dossiers are kept without
+    # flooding stdout; --detail prints them here as well.
+    with open(os.path.join(outdir, "scan.txt"), "w", encoding="utf-8") as fh:
+        render_scan_cli(report, limit=args.limit or 15, detail=True,
+                        detail_limit=args.detail_limit, list_limit=args.list_limit,
+                        width=RAW_WIDTH, stream=fh)
+    artifacts.append("scan.txt")
+
+    render_scan_cli(report, limit=args.limit or 15, detail=args.detail,
+                    detail_limit=args.detail_limit, list_limit=args.list_limit)
+    render_scan_result(s, output_dir=outdir, artifacts=artifacts)
+    if not args.detail:
+        print(f"  full per-target dossiers: {os.path.join(outdir, 'scan.txt')}"
+              f"   (--detail prints them here too)")
     return 0
 
 
@@ -309,13 +352,7 @@ def _cmd_graph(args: argparse.Namespace) -> int:
         print("pick one of --node, --path, --boundaries or --deputy", file=sys.stderr)
         return 2
 
-    if args.output:
-        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(output + "\n")
-        print(f"  {args.output}")
-    else:
-        print(output)
+    _write_output(output, args.output)
     return 0
 
 
@@ -353,13 +390,7 @@ def _cmd_probe(args: argparse.Namespace) -> int:
                      liveness=liveness)
 
     output = format_json(rows) if args.format == "json" else format_text(rows)
-    if args.output:
-        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(output + "\n")
-        print(f"  {args.output}")
-    else:
-        print(output)
+    _write_output(output, args.output)
 
     # ctypes + libdispatch can crash during interpreter teardown (a trailing
     # event delivered to a torn-down callback). The work is done and flushed, so
@@ -394,6 +425,25 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tui(args: argparse.Namespace) -> int:
+    """Review an existing JSON report in the terminal, dossiers included."""
+    _setup_logging(args.verbose)
+    if not os.path.exists(args.report):
+        print(f"no report at {args.report} — run 'tbm scan' first, or pass --report",
+              file=sys.stderr)
+        return 2
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+    if sys.stdin.isatty() and sys.stdout.isatty() and run_tui_app(
+            report, list_limit=args.list_limit):
+        return 0
+    render_tui(report, limit=args.limit, min_score=args.min_score,
+               priority=args.priority, validation=args.validation,
+               sink=args.sink, search=args.search,
+               detail=args.detail, list_limit=args.list_limit)
+    return 0
+
+
 def _cmd_protocol(args: argparse.Namespace) -> int:
     """Extract NSXPC-exported protocols from a Mach-O binary (or a service)."""
     _setup_logging(args.verbose)
@@ -422,13 +472,7 @@ def _cmd_protocol(args: argparse.Namespace) -> int:
             lines.append("\n(no NSXPC-exported protocols found)")
         output = "\n".join(lines)
 
-    if args.output:
-        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(output + "\n")
-        print(f"  {args.output}")
-    else:
-        print(output)
+    _write_output(output, args.output)
     return 0
 
 
@@ -465,13 +509,7 @@ def _cmd_clientgen(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    if args.output:
-        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(source)
-        print(f"  {args.output}")
-    else:
-        print(source)
+    _write_output(source.rstrip("\n"), args.output)
     return 0
 
 
@@ -513,10 +551,12 @@ def build_parser() -> argparse.ArgumentParser:
         prog="tbm",
         description="macOS-TBM — static, read-only trust-boundary and attack-surface mapper",
     )
+    p.add_argument("--version", action="version", version=version_string())
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("scan", help="scan launchd services and map trust boundaries")
-    s.add_argument("--output", default="./results", help="output directory (default ./results)")
+    s.add_argument("-out", "--output", default=None,
+                   help=f"output directory (default: {DEFAULT_OUTDIR})")
     s.add_argument("--json", action="store_true", help="emit report.json only")
     s.add_argument("--html", action="store_true", help="emit report.html only")
     s.add_argument("--graph", action="store_true", help="emit graph.json/.dot/.mmd only")
@@ -527,7 +567,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--mach-only", action="store_true", help="only Mach/XPC-exposing services")
     s.add_argument("--entitlement", default=None, help="filter by entitlement substring")
     s.add_argument("--limit", type=int, default=None, help="cap number of reported targets")
-    s.add_argument("--verbose", action="store_true")
+    s.add_argument("--detail", action="store_true",
+                   help="also print the per-target dossiers, which are always saved"
+                        " to scan.txt")
+    s.add_argument("--detail-limit", type=int, default=None,
+                   help="max per-target dossiers to write (default: every reported target)")
+    s.add_argument("--list-limit", type=int, default=LIST_LIMIT,
+                   help="max items per long list inside a dossier (0 = no cap)")
+    s.add_argument("-v", "--verbose", action="store_true", help="include detailed diagnostics")
     s.set_defaults(func=_cmd_scan)
 
     i = sub.add_parser("inspect", help="analyze a single Mach-O binary")
@@ -545,7 +592,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="extract NSXPC-exported protocols from a binary or service")
     pr.add_argument("target", help="binary path or launchd service label")
     pr.add_argument("--format", choices=["text", "json"], default="text")
-    pr.add_argument("--output", help="write to a file instead of stdout")
+    pr.add_argument("-out", "--output", help="write to a file (default: stdout)")
     pr.add_argument("--verbose", action="store_true")
     pr.set_defaults(func=_cmd_protocol)
 
@@ -556,7 +603,8 @@ def build_parser() -> argparse.ArgumentParser:
     cg.add_argument("--mach-service", help="Mach service name (overrides the extracted one)")
     cg.add_argument("--protocol-name", help="which protocol to generate (default first)")
     cg.add_argument("--selector", help="method to call (default: first method)")
-    cg.add_argument("--output", default=None, help="write main.m here instead of stdout")
+    cg.add_argument("-out", "--output", default=None,
+                    help="write main.m here (default: stdout)")
     cg.add_argument("--verbose", action="store_true")
     cg.set_defaults(func=_cmd_clientgen)
 
@@ -570,6 +618,25 @@ def build_parser() -> argparse.ArgumentParser:
                    help="max rows per Markdown table (0 = all); CSV always has every row")
     e.add_argument("--verbose", action="store_true")
     e.set_defaults(func=_cmd_export)
+
+    tu = sub.add_parser("tui", help="review a report in the terminal, with full dossiers")
+    tu.add_argument("--report", default="./results/report.json", help="report.json to read")
+    tu.add_argument("--limit", type=int, default=25,
+                    help="top targets to show in the non-interactive view"
+                         " (the dashboard scrolls through all of them)")
+    tu.add_argument("--min-score", type=int, default=0, help="only targets scoring at least N")
+    tu.add_argument("--priority", choices=["HIGH", "MEDIUM", "LOW", "INFO"],
+                    help="filter by priority")
+    tu.add_argument("--validation", choices=["NONE_OBSERVED", "WEAK", "MEDIUM", "STRONG"],
+                    help="filter by caller-validation grade")
+    tu.add_argument("--sink", help="filter by sensitive sink name")
+    tu.add_argument("--search", help="filter by service-label substring")
+    tu.add_argument("--detail", action="store_true",
+                    help="print the full dossier for each shown target (non-interactive view)")
+    tu.add_argument("--list-limit", type=int, default=LIST_LIMIT,
+                    help="max items per long list inside a dossier (0 = no cap)")
+    tu.add_argument("-v", "--verbose", action="store_true", help="include detailed diagnostics")
+    tu.set_defaults(func=_cmd_tui)
 
     g = sub.add_parser("graph", help="query the trust-boundary graph")
     g.add_argument("--report", default="./results/report.json", help="report.json to read")
@@ -596,7 +663,7 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--max-paths", type=int, default=5)
     g.add_argument("--limit", type=int, default=60, help="max nodes / rows")
     g.add_argument("--format", choices=["text", "dot", "mermaid", "json"], default="text")
-    g.add_argument("--output", help="write to a file instead of stdout")
+    g.add_argument("-out", "--output", help="write to a file (default: stdout)")
     g.add_argument("--verbose", action="store_true")
     g.set_defaults(func=_cmd_graph)
 
@@ -610,7 +677,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--timeout", type=float, default=3.0,
                     help="seconds to wait per sub-probe (default 3)")
     pr.add_argument("--format", choices=["text", "json"], default="text")
-    pr.add_argument("--output", help="write to a file instead of stdout")
+    pr.add_argument("-out", "--output", help="write to a file (default: stdout)")
     pr.add_argument("--verbose", action="store_true")
     pr.set_defaults(func=_cmd_probe)
 
@@ -620,6 +687,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    output_destination = getattr(args, "output", None)
+    machine_output = False
+    if args.command == "scan":
+        machine_output = output_destination is None and getattr(args, "json", False)
+    if args.command in {"graph", "probe", "protocol", "clientgen"}:
+        machine_output = output_destination is None
+    print_banner(args.command, stream=sys.stderr if machine_output else sys.stdout)
     return args.func(args)
 
 

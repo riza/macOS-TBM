@@ -73,7 +73,9 @@ the same class of bug.
 
 ## Style
 
-- Standard library only. No third-party runtime dependencies, ever.
+- Keep the scanner usable with the standard library alone. Rich, tqdm and
+  Textual are optional terminal UI enhancements listed in `requirements.txt`;
+  every command must retain a plain fallback when they are unavailable.
 - Type hints on public functions, docstrings that say *why*, not *what*.
 - Match the surrounding code: it is plain, boring Python on purpose.
 

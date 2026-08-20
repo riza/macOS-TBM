@@ -1,0 +1,4 @@
+# Terminal presentation dependencies
+rich>=13.7
+tqdm>=4.66
+textual>=0.50

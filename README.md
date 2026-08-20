@@ -1,3 +1,12 @@
+<div align="center">
+<pre>
+  __  __       
+ / /_/ /  __ _ 
+/ __/ _ \/  ' \
+\__/_.__/_/_/_/
+</pre>
+</div>
+
 <h1 align="center">macOS-TBM</h1>
 
 <p align="center">
@@ -8,7 +17,7 @@
 <p align="center">
   <a href="#quick-start"><img alt="platform" src="https://img.shields.io/badge/platform-macOS-000000?style=flat-square&logo=apple"></a>
   <a href="#requirements"><img alt="python" src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white"></a>
-  <a href="#requirements"><img alt="dependencies" src="https://img.shields.io/badge/dependencies-stdlib%20only-2ea043?style=flat-square"></a>
+  <a href="#requirements"><img alt="dependencies" src="https://img.shields.io/badge/dependencies-stdlib%20%2B%20optional%20UI-2ea043?style=flat-square"></a>
   <a href=".github/workflows/ci.yml"><img alt="tests" src="https://img.shields.io/badge/tests-unittest-8957e5?style=flat-square"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
 </p>
@@ -30,11 +39,24 @@ $ python3 tbm.py scan
 2026-08-19 10:33:04 INFO scanner: discovered 901 launchd jobs (scope=all)
 2026-08-19 10:33:04 INFO scanner: resolved 829 unique executables
 
-  report.json  -> results
-  report.html  -> results
-  graph.json / graph.dot / graph.mmd -> results
-
-Done. 901 services, 348 privileged, 759 Mach/XPC, 161 high-priority.
+────────────────────── [+] macOS-TBM scan summary ──────────────────────
+Services 901  Privileged 348  Mach/XPC 759  High priority 220  Entitlements 1,545
+──────────────────── [!] High-priority review queue ────────────────────
+  SCORE  SERVICE                        VALIDATION  IPC
+    122  com.apple.security.syspolicy   STRONG      xpc-mach-provider-and-client
+    120  com.apple.ManagedClient.enroll STRONG      xpc-mach-provider-and-client
+...
+╭─ Scan complete ───╮
+│      SERVICES 901 │
+│    PRIVILEGED 348 │
+│      MACH/XPC 759 │
+│ HIGH PRIORITY 220 │
+╰───────────────────╯
+  ✓ report.json                         → ./results
+  ✓ report.html                         → ./results
+  ✓ graph.json / graph.dot / graph.mmd  → ./results
+  ✓ scan.txt                            → ./results
+  full per-target dossiers: ./results/scan.txt   (--detail prints them here too)
 ```
 
 ---
@@ -48,13 +70,19 @@ cd macOS-TBM
 # Map the whole system (a few minutes: it runs nm/otool/codesign per binary)
 python3 tbm.py scan
 
-# Read the result
+# Show version and source build identifier
+python3 tbm.py --version
+
+# Read the result: in a browser, in the terminal, or as plain text
 open results/report.html
+python3 tbm.py tui
+less -R results/scan.txt
 ```
 
-No install step, no virtualenv, no dependencies — it is standard library only,
-on purpose: a tool that inspects your system should not pull third-party code
-into that process.
+No install step is required: the scanner works with the standard library only.
+For a richer interactive terminal experience, optionally install
+`requirements.txt` (Rich + tqdm); non-interactive output keeps its plain
+fallback and remains safe to pipe.
 
 ---
 
@@ -91,6 +119,73 @@ For every launchd job on the system it collects and correlates:
     the report (an administrator can turn them on) but are scored down and badged.
 11. **Research leads** — "why interesting" + open manual-review questions.
 
+### Terminal review
+
+Install the optional UI helpers — Rich, tqdm and Textual — and the terminal
+views light up:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 tbm.py scan --scope daemons
+python3 tbm.py tui --report ./results/report.json
+```
+
+Scan progress uses Rich by default, falls back to tqdm when Rich is missing, and
+disables animation when stdout/stderr are redirected. Colour follows the stream:
+a terminal gets the palette, a file or a pipe stays plain, so `scan.txt` and
+piped output are unchanged.
+
+**`tbm tui`** opens a keyboard-driven Textual dashboard: the logo, counters and
+active filters centred at the top, the target table on the left — every target
+that passes the filters, scrolled — and the dossier of the highlighted row on
+the right. Table and dossier share one palette: priority is red / yellow /
+green, and caller validation follows the dossier's convention of green where
+evidence was observed and yellow where it was not, so `NONE_OBSERVED` never
+reads as reassuring.
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` / `j` `k` | move the row cursor; the dossier follows |
+| `/` | focus search (filter by service label) |
+| `p` / `v` | cycle the priority / caller-validation filter |
+| `r` | reset all filters |
+| `tab` | focus the dossier pane and scroll it |
+| `f` | give the dossier the full width |
+| `q` | quit |
+
+Without Textual or a TTY, `tui` falls back to the Rich dashboard: summary
+panel, priority / validation / sink distributions and the top targets, narrowed
+with `--min-score`, `--priority`, `--validation`, `--sink` and `--search`. Add
+`--detail` to print the full dossier of every shown target, and `--limit` to cap
+how many are shown — the interactive dashboard scrolls, so `--limit` applies to
+this view only.
+
+The dossier is the terminal edition of the HTML drawer and carries the same
+sections from the same report fields, all in one aligned two-column layout:
+
+- **launchd metadata** — plist, program, run-as with its derivation, load state
+  with its derivation, Mach services, sockets, keep-alive, run-at-load,
+- **code signing** — signed, identifier, team, platform binary, flags, the full
+  authority chain, architectures,
+- **why it is interesting** and the **score contributors**, each with its weight
+  and a bar,
+- **sensitive subsystems** — every piece of evidence with its kind, match,
+  aspect and weight, including the ones that were not counted,
+- **caller validation** — the observed classes with their matches *and* the ones
+  not observed, with the weight and exactly what was looked for,
+- **every entitlement**, private ones first, plus the entitlements the binary
+  appears to check on its callers,
+- **findings** with their evidence, the open **research questions**, and the
+  **binary detail** (linked libraries, interesting strings, ObjC classes,
+  symbol counts).
+
+Long Mach-O lists are capped by `--list-limit` (`0` removes the cap) and the
+number withheld is always printed.
+
+Interactive commands show a `macOS-TBM` banner with the version, command, and
+short git build identifier. For JSON/stdout pipelines, the banner is sent to
+stderr so the data stream stays valid.
+
 ### The dashboard
 
 `results/report.html` is a single self-contained file — no network access, no
@@ -109,7 +204,7 @@ CDN, no tracking. It carries its own data and renders:
 ## Requirements
 
 - macOS (uses `codesign`, `lipo`, `otool`, `nm`, `strings`, `plutil`).
-- Python 3.10+ (standard library only; no third-party packages).
+- Python 3.10+ (standard library required; Rich and tqdm are optional UI packages).
 
 The scanner is **read-only**: it never modifies launchd configuration, never
 loads/unloads services, never sends XPC messages, and never mutates the files it
@@ -120,17 +215,27 @@ inspects.
 ## Usage
 
 ```bash
-# Full scan (all launchd roots), write all reports to ./results
+# Full scan (all launchd roots): summary in the terminal, artifacts in ./results
 python3 tbm.py scan
 
-# Scoped scan with output directory and filters
-python3 tbm.py scan --scope daemons --output ./results \
+# Print the per-target dossiers in the terminal as well (always in scan.txt)
+python3 tbm.py scan --detail
+python3 tbm.py scan --detail --detail-limit 20 --list-limit 10
+
+# Scoped scan with another output directory and filters
+python3 tbm.py scan --scope daemons -out ./results \
     --min-score 70 --privileged-only --mach-only
 
-# Only JSON / only HTML / only graph
-python3 tbm.py scan --json
+# Only JSON / only HTML / only graph artifacts
 python3 tbm.py scan --html
 python3 tbm.py scan --graph
+
+# Stream a machine-readable report and write nothing
+python3 tbm.py scan --json | jq '.summary'
+
+# Review a finished report in the terminal
+python3 tbm.py tui
+python3 tbm.py tui --priority HIGH --validation NONE_OBSERVED --detail
 
 # Export the last report as one file per entity (CSV + Markdown)
 python3 tbm.py export
@@ -141,6 +246,8 @@ python3 tbm.py graph --node com.apple.diskimagesiod.spb --depth 2
 python3 tbm.py graph --path com.apple.someagent com.apple.somedaemon
 python3 tbm.py graph --deputy com.apple.mobileactivationd
 python3 tbm.py graph --deputy com.apple.mobileactivationd --deputy-entitlement com.apple.mobileactivationd.spi
+# Graph queries print to stdout by default
+python3 tbm.py graph --boundaries --format json | jq 'length'
 
 # ACTIVE: probe which exposed Mach services an unprivileged client can reach
 python3 tbm.py probe --service com.apple.mobileactivationd
@@ -165,12 +272,23 @@ clang -fobjc-arc -framework Foundation main.m -o client
 python3 tbm.py scan --workers 16 --verbose
 ```
 
+`scan` saves its work and keeps the terminal short. Without `-out` it writes to
+`./results`: `report.json`, `report.html`, the graph exports, and `scan.txt` —
+the complete terminal report, summary plus the full dossier of every reported
+target. stdout gets the evidence-oriented, linpeas-style summary and a list of
+what was written. Use `--detail` to print the dossiers in the terminal as well,
+`--detail-limit N` to cap how many are written, `--list-limit N` to cap long
+lists inside one, `-out DIR` for another directory, or `--json` to stream the
+report to stdout instead (the one mode that writes nothing). `graph`, `probe`, `protocol`, and `clientgen` print to stdout by
+default; pass `-out <file>` when a file is needed.
+
 Outputs (under `--output`, default `./results`):
 
 | File         | Description                                   |
 |--------------|-----------------------------------------------|
 | `report.json`| Full machine-readable report (summary + targets) |
 | `report.html`| Self-contained dashboard (charts, filters, per-target dossier) |
+| `scan.txt`   | The full terminal report: summary plus one dossier per target |
 | `export/`    | One CSV + Markdown table per entity, plus a dossier per service |
 | `graph.json` | Trust-boundary graph as JSON                    |
 | `graph.dot`  | Graphviz DOT                                   |
