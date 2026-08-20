@@ -139,6 +139,12 @@ python3 tbm.py export
 python3 tbm.py graph --boundaries --validation NONE_OBSERVED --min-score 90
 python3 tbm.py graph --node com.apple.diskimagesiod.spb --depth 2
 python3 tbm.py graph --path com.apple.someagent com.apple.somedaemon
+python3 tbm.py graph --deputy com.apple.mobileactivationd
+python3 tbm.py graph --deputy com.apple.mobileactivationd --deputy-entitlement com.apple.mobileactivationd.spi
+
+# ACTIVE: probe which exposed Mach services an unprivileged client can reach
+python3 tbm.py probe --service com.apple.mobileactivationd
+python3 tbm.py probe --limit 40 --timeout 2 --format json
 
 # Filter by entitlement substring
 python3 tbm.py scan --entitlement com.apple.private.tcc
@@ -148,6 +154,12 @@ python3 tbm.py inspect /usr/libexec/exampled
 
 # Analyze a specific launchd service by label substring
 python3 tbm.py service com.apple.example
+
+# Extract the NSXPC protocol a daemon exports, and generate a test client
+python3 tbm.py protocol /usr/libexec/mobileactivationd
+python3 tbm.py protocol com.apple.mobileactivationd --format json --output proto.json
+python3 tbm.py clientgen proto.json --mach-service com.apple.mobileactivationd -o main.m
+clang -fobjc-arc -framework Foundation main.m -o client
 
 # More parallelism / verbosity
 python3 tbm.py scan --workers 16 --verbose
@@ -278,6 +290,110 @@ string evidence, a solid one an entitlement; a hollow node is a disabled job.
 
 ---
 
+## Probing reachability — the one active command
+
+> [!WARNING]
+> `tbm probe` is the **only** command that is not read-only. Every other command
+> inspects; `probe` *connects* to exposed Mach services and sends real (empty and
+> one-key) XPC messages, as an unprivileged client, to classify which root
+> services an unprivileged process can actually reach. It runs as your normal
+> user — never `sudo` — and it is opt-in: a scan never probes.
+
+Static analysis tells you a root daemon *exposes* a Mach service; it cannot tell
+you whether an unprivileged process can *reach* it. Confirming that is the #1
+manual step in LPE triage — normally a hand-written C probe per service. `probe`
+does it for every root service in a report at once:
+
+```bash
+python3 tbm.py probe                                   # every root Mach service in report.json
+python3 tbm.py probe --service com.apple.mobileactivationd
+python3 tbm.py probe --limit 40 --timeout 2 --format json --output probe.json
+```
+
+Each service is classified into exactly one bucket:
+
+| Bucket | Meaning |
+|--------|---------|
+| `spawn` | the peer replied, or the daemon is up and tolerated our messages |
+| `connect-alive` | connection accepted and held open, never dropped us |
+| `empty-interrupted` | an empty message drew "Connection interrupted" (reachable, rejected early) |
+| `malformed-interrupted` | a one-key message drew "Connection interrupted" |
+| `timeout` | a send drew neither reply nor error and nothing spawned |
+| `unreachable` | bootstrap lookup / connect failed ("Connection invalid") |
+
+`connect-alive` and `empty-interrupted` are the **actually reachable** set: an
+unprivileged client got far enough to talk to a privileged peer, which is where
+manual review should start. The summary lists that shortlist.
+
+```
+  MACH SERVICE                          PROVIDER              RUN AS  CLASSIFICATION     ERROR
+  com.apple.mobileactivationd           com.apple.mobileacti… root    empty-interrupted  Connection interrupted
+```
+
+**How it talks to XPC.** Python cannot call the XPC C API directly. macOS-TBM
+binds `libxpc` with **ctypes** — no compile step, no bundled helper, still
+stdlib-only. `libxpc` has no on-disk `.dylib` on modern macOS, but its symbols
+are re-exported through the already-loaded `libSystem`, so `ctypes.CDLL(None)`
+resolves them; the one block argument (`xpc_connection_set_event_handler`) is a
+hand-built global block literal. See [probes/xpc.py](probes/xpc.py). Not on
+macOS, or the symbols are missing? `probe` exits with a clear message and the
+rest of the tool is unaffected.
+
+---
+
+## NSXPC protocol extraction and client generation
+
+For NSXPC daemons, reconstructing the exported Objective-C protocol by hand is
+slow. `tbm protocol` extracts it automatically and `tbm clientgen` turns it into
+a compilable test client:
+
+```bash
+python3 tbm.py protocol /usr/libexec/mobileactivationd
+python3 tbm.py protocol com.apple.mobileactivationd --format json --output proto.json
+python3 tbm.py clientgen proto.json --mach-service com.apple.mobileactivationd \
+    --selector handleActivationInfo:options:withCompletionBlock: --output main.m
+clang -fobjc-arc -framework Foundation main.m -o client
+```
+
+`tbm protocol <binary-or-service>` runs `otool -ov` (arm64e slice, falling back
+to the whole file) and `nm`, finds protocols exported via `NSXPCListenerDelegate`,
+parses each `instanceMethods` table, and decodes the ObjC type encodings into
+readable signatures — `v40@0:8@16@24@?32` becomes
+`- (void)handleActivationInfo:(id)arg0 options:(id)arg1 withCompletionBlock:(id)block`.
+
+On modern arm64e binaries `otool` prints the resolved *types* but leaves the
+selector *names* as relative offsets; the extractor resolves the two-level
+indirection (method-list name → `__objc_selrefs` → `__objc_methname`) itself.
+Block arguments are rendered as `id` — the skeleton cannot know a block's
+signature, and neither can a static extractor.
+
+`tbm clientgen` emits a self-contained `main.m`: it declares the `@protocol`,
+builds an `NSXPCConnection` to the Mach service, sets `remoteObjectInterface`,
+and calls one selector (first method, or `--selector`) with `NSNull` / empty
+arguments and a logging completion block. Both commands stay stdlib-only and
+read-only; only the *generated client* is active when you choose to run it.
+
+---
+
+## Server-side entitlement checks
+
+The `<label>.*` entitlement heuristic is a guess about what a daemon gates its
+clients on. The **server-side entitlement check** signal reports the real
+answer: the `com.apple.*` keys a binary *checks* on its clients.
+
+A binary that calls `valueForEntitlement:` / `xpc_connection_copy_entitlement_value` /
+`SecTaskCopyValueForEntitlement` / `remoteProcessHasBooleanEntitlement:` (or
+carries strings like `"missing entitlement"` / `"not entitled"`) is checking its
+clients. The `com.apple.*` keys in its string table that are **not** among its
+own held entitlements are the candidate checked keys — the held set (what Apple
+granted *it*) and the checked set (what it queries on *others*) are different,
+and this is the crux. The result is stored per target as `checked_entitlements`
+in `report.json`, emitted as `CHECKED_ENTITLEMENT` edges in the graph, and is
+what `tbm graph --deputy <daemon>` gates on by default — falling back to the
+`<label>.*` heuristic only when nothing was observed.
+
+---
+
 ## Trust-boundary model
 
 Nodes:
@@ -298,6 +414,7 @@ Edges:
 | `LINKS_TO`          | Executable → Framework       | binary links the library         |
 | `LOOKS_UP`          | Executable → MachService     | client names the service (see below) |
 | `HAS_ENTITLEMENT`   | Executable → Entitlement     | binary carries the entitlement   |
+| `CHECKED_ENTITLEMENT`| LaunchService → Entitlement | daemon checks the entitlement on its clients (server-side) |
 | `ACCESSES_SUBSYSTEM`| Executable → Subsystem       | binary touches a sensitive sink  |
 
 `LOOKS_UP` is the edge that makes this a *trust-boundary* graph, and it is only

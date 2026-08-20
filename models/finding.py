@@ -52,6 +52,7 @@ class Target:
     validation: str = "NONE_OBSERVED"
     validation_assessment: Any = None  # ValidationAssessment
     entitlement_findings: List[str] = field(default_factory=list)
+    checked_entitlements: List[str] = field(default_factory=list)
     why_interesting: List[str] = field(default_factory=list)
     research_questions: List[str] = field(default_factory=list)
     research_leads: List[str] = field(default_factory=list)
@@ -82,6 +83,7 @@ class Target:
             "validation_assessment": (self.validation_assessment.to_dict()
                                       if self.validation_assessment else None),
             "entitlement_findings": list(self.entitlement_findings),
+            "checked_entitlements": list(self.checked_entitlements),
             "why_interesting": list(self.why_interesting),
             "research_questions": list(self.research_questions),
             "research_leads": list(self.research_leads),

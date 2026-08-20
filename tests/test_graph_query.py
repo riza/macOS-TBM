@@ -134,6 +134,150 @@ class TestBoundaries(unittest.TestCase):
         self.assertTrue(g.boundary_crossings(enabled_only=False))
 
 
+def _deputy_graph():
+    """A root daemon, a privileged deputy, and a bystander client.
+
+    The deputy looks the daemon's Mach service up *and* holds a
+    ``<label>.*`` entitlement (the ``com.apple.<name>.spi`` pattern Apple uses
+    for server-side client gating). The bystander looks the service up but holds
+    no gate entitlement.
+    """
+    return {
+        "nodes": [
+            {"id": "service:com.example.rootd", "type": "LaunchService",
+             "label": "com.example.rootd",
+             "data": {"privileged": True, "enabled": True, "score": 100,
+                      "validation": "NONE_OBSERVED", "run_as_user": "root"}},
+            {"id": "exec:/usr/libexec/rootd", "type": "Executable",
+             "label": "/usr/libexec/rootd",
+             "data": {"privileged": True, "service": "com.example.rootd",
+                      "run_as_user": "root"}},
+            {"id": "mach:com.example.rootd", "type": "MachService",
+             "label": "com.example.rootd"},
+            {"id": "exec:/usr/libexec/setupagent", "type": "Executable",
+             "label": "/usr/libexec/setupagent",
+             "data": {"privileged": False, "service": "com.example.setupagent",
+                      "run_as_user": "current-user", "validation": "STRONG"}},
+            {"id": "exec:/usr/libexec/bystander", "type": "Executable",
+             "label": "/usr/libexec/bystander",
+             "data": {"privileged": False, "service": "com.example.other",
+                      "run_as_user": "current-user"}},
+            {"id": "ent:com.example.rootd.spi", "type": "Entitlement",
+             "label": "com.example.rootd.spi"},
+            {"id": "ent:com.example.rootd.bridge", "type": "Entitlement",
+             "label": "com.example.rootd.bridge"},
+        ],
+        "edges": [
+            {"source": "exec:/usr/libexec/rootd", "target": "service:com.example.rootd",
+             "type": "LAUNCHED_BY", "label": "launched by", "data": {}},
+            {"source": "service:com.example.rootd", "target": "mach:com.example.rootd",
+             "type": "PROVIDES", "label": "provides", "data": {}},
+            {"source": "exec:/usr/libexec/setupagent", "target": "mach:com.example.rootd",
+             "type": "LOOKS_UP", "label": "looks up", "data": {"evidence": "entitlement"}},
+            {"source": "exec:/usr/libexec/setupagent", "target": "ent:com.example.rootd.spi",
+             "type": "HAS_ENTITLEMENT", "label": "has entitlement", "data": {}},
+            {"source": "exec:/usr/libexec/bystander", "target": "mach:com.example.rootd",
+             "type": "LOOKS_UP", "label": "looks up", "data": {"evidence": "string"}},
+            {"source": "exec:/usr/libexec/rootd", "target": "ent:com.example.rootd.bridge",
+             "type": "HAS_ENTITLEMENT", "label": "has entitlement", "data": {}},
+        ],
+    }
+
+
+class TestDeputies(unittest.TestCase):
+    def setUp(self):
+        self.g = TrustGraph(_deputy_graph())
+
+    def test_default_gate_is_label_namespaced(self):
+        rows = self.g.deputies("com.example.rootd")
+        clients = [r["client"] for r in rows]
+        self.assertEqual(clients, ["/usr/libexec/setupagent"])
+        self.assertEqual(rows[0]["gate_entitlements"], ["com.example.rootd.spi"])
+
+    def test_bystander_without_gate_entitlement_is_excluded(self):
+        rows = self.g.deputies("com.example.rootd")
+        self.assertNotIn("/usr/libexec/bystander", [r["client"] for r in rows])
+
+    def test_explicit_gate_entitlements_override_the_heuristic(self):
+        rows = self.g.deputies("com.example.rootd", gate_entitlements=["com.example.rootd.bridge"])
+        self.assertEqual(rows, [])  # no *client* holds bridge
+
+    def test_unprivileged_clients_are_reported(self):
+        rows = self.g.deputies("com.example.rootd")
+        self.assertTrue(rows)
+        self.assertFalse(rows[0]["client_privileged"])
+        self.assertEqual(rows[0]["client_validation"], "STRONG")
+
+    def test_unknown_target_returns_empty(self):
+        self.assertEqual(self.g.deputies("no.such.daemon"), [])
+
+
+def _checked_deputy_graph():
+    """A daemon that checks a client entitlement NOT under its own label.
+
+    The daemon's ``checked_entitlements`` is ``com.example.gate.checked`` (via a
+    CHECKED_ENTITLEMENT edge); a client holds it and looks the service up. The
+    ``<label>.*`` heuristic would NOT match that key, so this pins that
+    ``deputies()`` prefers the checked set over the namespace fallback.
+    """
+    return {
+        "nodes": [
+            {"id": "service:com.example.rootd", "type": "LaunchService",
+             "label": "com.example.rootd",
+             "data": {"privileged": True, "enabled": True, "score": 100,
+                      "validation": "NONE_OBSERVED", "run_as_user": "root"}},
+            {"id": "exec:/usr/libexec/rootd", "type": "Executable",
+             "label": "/usr/libexec/rootd",
+             "data": {"privileged": True, "service": "com.example.rootd"}},
+            {"id": "mach:com.example.rootd", "type": "MachService",
+             "label": "com.example.rootd"},
+            {"id": "exec:/usr/libexec/checkedclient", "type": "Executable",
+             "label": "/usr/libexec/checkedclient",
+             "data": {"privileged": False, "service": "com.example.checkedclient",
+                      "run_as_user": "current-user"}},
+            {"id": "ent:com.example.gate.checked", "type": "Entitlement",
+             "label": "com.example.gate.checked"},
+        ],
+        "edges": [
+            {"source": "exec:/usr/libexec/rootd", "target": "service:com.example.rootd",
+             "type": "LAUNCHED_BY", "label": "launched by", "data": {}},
+            {"source": "service:com.example.rootd", "target": "mach:com.example.rootd",
+             "type": "PROVIDES", "label": "provides", "data": {}},
+            {"source": "service:com.example.rootd", "target": "ent:com.example.gate.checked",
+             "type": "CHECKED_ENTITLEMENT", "label": "checks client entitlement",
+             "data": {"evidence": "server-side-check"}},
+            {"source": "exec:/usr/libexec/checkedclient", "target": "mach:com.example.rootd",
+             "type": "LOOKS_UP", "label": "looks up", "data": {"evidence": "entitlement"}},
+            {"source": "exec:/usr/libexec/checkedclient", "target": "ent:com.example.gate.checked",
+             "type": "HAS_ENTITLEMENT", "label": "has entitlement", "data": {}},
+        ],
+    }
+
+
+class TestDeputiesPreferCheckedEntitlements(unittest.TestCase):
+    def setUp(self):
+        self.g = TrustGraph(_checked_deputy_graph())
+
+    def test_checked_entitlements_override_the_label_heuristic(self):
+        rows = self.g.deputies("com.example.rootd")
+        clients = [r["client"] for r in rows]
+        self.assertEqual(clients, ["/usr/libexec/checkedclient"])
+        self.assertEqual(rows[0]["gate_entitlements"], ["com.example.gate.checked"])
+
+    def test_no_checked_entitlements_falls_back_to_heuristic(self):
+        # Without the CHECKED_ENTITLEMENT edge, the checked key would not match
+        # the <label>.* heuristic and no deputy would be reported.
+        data = _checked_deputy_graph()
+        data["edges"] = [e for e in data["edges"] if e["type"] != "CHECKED_ENTITLEMENT"]
+        self.assertEqual(TrustGraph(data).deputies("com.example.rootd"), [])
+
+    def test_explicit_gate_still_overrides_checked(self):
+        rows = self.g.deputies("com.example.rootd",
+                               gate_entitlements=["com.example.nonexistent"])
+        self.assertEqual(rows, [])
+
+
+
 class TestRendering(unittest.TestCase):
     def test_dot_and_mermaid_contain_every_node(self):
         g = TrustGraph(_graph())

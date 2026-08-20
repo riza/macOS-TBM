@@ -31,7 +31,9 @@ _INTERESTING_RE = re.compile(
     r"PackageKit|PKInstall|softwareupdated|MobileSoftwareUpdate|installer|"
     r"nw_listener|nw_connection|CFSocket|getaddrinfo|SecAssessment|syspolicyd|"
     r"Gatekeeper|es_new_client|es_subscribe|com\.apple\.private\.|com\.apple\.TCC|"
-    r"com\.apple\.opendirectoryd|com\.apple\.installer|com\.apple\.network)"
+    r"com\.apple\.opendirectoryd|com\.apple\.installer|com\.apple\.network|"
+    r"valueForEntitlement|remoteProcessHasBooleanEntitlement|not entitled|"
+    r"missing entitlement)"
 )
 
 # Bundle-identifier-shaped strings (``com.apple.foo.bar``). A binary that names a

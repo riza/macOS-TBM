@@ -46,6 +46,7 @@ class SignalsResult:
     validation_assessment: ValidationAssessment = field(default_factory=ValidationAssessment)
     assessments: List[SinkAssessment] = field(default_factory=list)
     findings: List[Finding] = field(default_factory=list)
+    checked_entitlements: List[str] = field(default_factory=list)
 
     @property
     def validation(self) -> str:
@@ -150,6 +151,48 @@ def _collect_evidence(cfg, imports, objc, strings, libs, weak, ents) -> List[Evi
     return unique
 
 
+def detect_checked_entitlements(macho, codesign) -> tuple[List[str], List[Evidence]]:
+    """Entitlement keys a binary appears to CHECK on its clients (server-side).
+
+    This is the held-vs-checked distinction: ``codesign.entitlements`` are the
+    capabilities Apple granted *this* binary; ``checked_entitlements`` are the
+    keys it queries on *other* processes. A binary that calls
+    ``valueForEntitlement:`` / ``SecTaskCopyValueForEntitlement`` /
+    ``xpc_connection_copy_entitlement_value`` on a connection is checking its
+    clients, and the ``com.apple.*`` keys sitting in its string table that it
+    does not itself hold are the candidate keys it checks — the
+    ``com.apple.<name>.spi`` pattern Apple uses for server-side client gating.
+
+    Returns ``(checked_keys, checker_evidence)``. Without a checker marker we
+    return no keys: a ``com.apple.*`` string by itself is a name the binary
+    knows, not an entitlement it checks.
+    """
+    rules = signals_rules()
+    cfg = rules.get("server_entitlement_check", {})
+    imports, objc, strings, _libs, _weak, ents = _pools(macho, codesign)
+
+    checker_evidence = _needle_hits(
+        list(cfg.get("symbols", [])) + list(cfg.get("strings", [])),
+        imports, objc, strings,
+    )
+    if not checker_evidence:
+        return [], []
+
+    held = set(ents)
+    keys: List[str] = []
+    for s in strings:
+        if s.startswith("com.apple.") and s not in held and s not in keys:
+            keys.append(s)
+    # Entitlement keys are lowercase, namespaced identifiers (>=3 dots:
+    # com.apple.<name>.<key>). A bare service name (com.apple.fairplay), an
+    # NSError domain (com.apple.MobileActivation.ErrorDomain) or a notification
+    # name is not an entitlement; dropping those keeps the candidate set from
+    # being mostly noise. These are candidates regardless — deputies() refines
+    # them against what clients actually hold.
+    keys = [k for k in keys if k.islower() and k.count(".") >= 3]
+    return sorted(keys), checker_evidence
+
+
 def detect_signals(service, macho, codesign) -> SignalsResult:
     """Detect security signals for a service/executable."""
     rules = signals_rules()
@@ -227,4 +270,21 @@ def detect_signals(service, macho, codesign) -> SignalsResult:
         )
 
     result.assessments.sort(key=lambda a: -a.score)
+
+    # --- server-side entitlement checks -----------------------------------
+    # Reported as a list of candidate checked keys, not scored. The crux is the
+    # held-vs-checked distinction: keys the daemon queries on its clients are a
+    # different set from the ones it itself holds.
+    result.checked_entitlements, checker_evidence = detect_checked_entitlements(macho, codesign)
+    if result.checked_entitlements:
+        result.findings.append(
+            Finding(
+                category="server_entitlement_check",
+                level=FactLevel.HEURISTIC,
+                message=(f"appears to check client entitlement(s): "
+                         f"{', '.join(result.checked_entitlements)}"),
+                evidence=", ".join(e.describe() for e in checker_evidence[:8]),
+            )
+        )
+
     return result

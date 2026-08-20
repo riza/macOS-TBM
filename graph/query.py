@@ -180,6 +180,106 @@ class TrustGraph:
         crossings.sort(key=lambda c: (-c["provider_score"], c["mach_service"], c["client"]))
         return crossings
 
+    def deputies(self, target: str, gate_entitlements: Optional[Sequence[str]] = None
+                 ) -> List[Dict[str, Any]]:
+        """Deputy candidates for a target daemon.
+
+        A *deputy* is a client that looks up the target's Mach service **and**
+        holds an entitlement the target is expected to gate on. The default gate
+        set is the target's own ``checked_entitlements`` (the keys it appears to
+        check server-side on its clients, via ``CHECKED_ENTITLEMENT`` edges);
+        when none were observed it falls back to every entitlement namespaced
+        under the target's label (``<label>.*``) — the ``com.apple.<name>.spi``
+        pattern Apple uses for server-side client checks. An explicit
+        ``gate_entitlements`` list overrides both.
+
+        This is identification, not exploitation: a deputy on the list still has
+        to be reachable from a less-trusted client and to forward attacker input.
+
+        Scope note: clients are drawn from ``LOOKS_UP`` edges, which only exist
+        where a Mach-lookup exception names the service. Platform binaries that
+        reach the service through a client framework *without* an explicit
+        exception will not appear here (see ``LINKS_TO`` for the framework view).
+        """
+        ids = self.resolve(target, "LaunchService")
+        if not ids:
+            ids = self._provider_of(target)
+        if not ids:
+            return []
+        svc_id = ids[0]
+        svc = self.node(svc_id)
+        label = svc.get("label") or svc_id
+
+        mach_ids = {other for other, _e, _o in self.neighbours(svc_id, {"PROVIDES"})}
+
+        if gate_entitlements is None:
+            # Prefer the REAL gate: the entitlements the daemon checks on its
+            # clients (CHECKED_ENTITLEMENT edges). Fall back to the <label>.*
+            # heuristic only when nothing was observed.
+            checked = self._checked_entitlements(svc_id)
+            if checked:
+                gate = checked
+            else:
+                prefix = label + "."
+                gate = {n.get("label") for n in self.nodes.values()
+                        if n.get("type") == "Entitlement"
+                        and str(n.get("label", "")).startswith(prefix)}
+        else:
+            gate = set(gate_entitlements)
+
+        # Evidence per (client -> mach) lookup edge, gathered once.
+        lookup_evidence: Dict[Tuple[str, str], str] = {}
+        clients: Set[str] = set()
+        for edge in self.edges:
+            if edge.get("type") == "LOOKS_UP" and edge.get("target") in mach_ids:
+                clients.add(edge["source"])
+                lookup_evidence[(edge["source"], edge["target"])] = \
+                    (edge.get("data") or {}).get("evidence", "?")
+
+        rows: List[Dict[str, Any]] = []
+        for cli in sorted(clients):
+            held = {edge.get("target", "")[len("ent:"):]
+                    for _o, edge, _out in self.neighbours(cli, {"HAS_ENTITLEMENT"})}
+            matched = sorted(held & gate)
+            if not matched:
+                continue
+            cnode = self.node(cli)
+            cdata = cnode.get("data") or {}
+            evidence = next(iter(lookup_evidence.get((cli, m)) for m in mach_ids
+                                 if (cli, m) in lookup_evidence), "?")
+            rows.append({
+                "client": cnode.get("label", cli),
+                "client_service": cdata.get("service", ""),
+                "client_run_as": cdata.get("run_as_user", "?"),
+                "client_privileged": bool(cdata.get("privileged")),
+                "client_validation": cdata.get("validation", "NONE_OBSERVED"),
+                "gate_entitlements": matched,
+                "lookup_evidence": evidence,
+            })
+        rows.sort(key=lambda r: (r["client_privileged"], r["client"]))
+        return rows
+
+    def _checked_entitlements(self, svc_id: str) -> Set[str]:
+        """Entitlement keys a service checks on its clients (CHECKED_ENTITLEMENT)."""
+        return {
+            self.node(edge["target"]).get("label", "")
+            for edge in self.edges
+            if edge.get("type") == "CHECKED_ENTITLEMENT" and edge.get("source") == svc_id
+        }
+
+    def _provider_of(self, target: str) -> List[str]:
+        """Resolve a Mach-service name (or node id) to its provider service."""
+        mach_id = target if target.startswith("mach:") else f"mach:{target}"
+        prov = [e.get("source") for e in self.edges
+                if e.get("type") == "PROVIDES" and e.get("target") == mach_id]
+        if not prov:
+            mach = self.node(mach_id)
+            label = mach.get("label")
+            prov = [e.get("source") for e in self.edges
+                    if e.get("type") == "PROVIDES"
+                    and self.node(e.get("target")).get("label") == label]
+        return prov[:1]
+
 
 # --------------------------------------------------------------------------
 # rendering

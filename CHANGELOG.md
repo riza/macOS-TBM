@@ -8,6 +8,22 @@ All notable changes to macOS-TBM are documented here. This project follows
 
 ### Added
 
+- **`tbm probe`** — the one *active* (non-read-only) command: it connects to
+  every root Mach service in a report as an unprivileged client and classifies
+  reachability (`spawn`, `connect-alive`, `empty-interrupted`,
+  `malformed-interrupted`, `timeout`, `unreachable`), shortlisting the
+  actually-reachable set. Talks to XPC via `ctypes` against the `libxpc`
+  symbols re-exported through `libSystem` — no compile step, still stdlib-only.
+- **`tbm protocol` / `tbm clientgen`** — extract the NSXPC protocol a daemon
+  exports (`otool -ov` + `nm`, with ObjC type-encoding decode and, for modern
+  arm64e relative method lists, selref→selector resolution) and generate a
+  compilable Objective-C `main.m` test client.
+- **Server-side entitlement check signal** — the `com.apple.*` keys a binary
+  *checks* on its clients (held vs checked are different sets), stored as
+  `checked_entitlements` in `report.json`, emitted as `CHECKED_ENTITLEMENT`
+  graph edges, and used by `tbm graph --deputy` as the default gate (falling
+  back to the `<label>.*` heuristic).
+
 - **An interactive graph explorer in the HTML report.** The trust core (3,597
   nodes, 7,137 edges) is index-encoded into ~290 KB and rendered on a canvas
   with three modes: a layered boundary-crossing ladder (client → Mach service →

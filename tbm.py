@@ -35,7 +35,7 @@ from reporting.export import export_report
 from reporting.html_report import write_html_report
 from reporting.json_report import build_report, write_json_report
 from scanner import analyze_service, run_scan
-from utils.commands import ResultCache
+from utils.commands import ResultCache, run
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -266,6 +266,29 @@ def _cmd_graph(args: argparse.Namespace) -> int:
             output = (f"{tg.node(src_ids[0]).get('label')}  ->  "
                       f"{tg.node(dst_ids[0]).get('label')}\n\n" + paths_to_text(tg, paths))
 
+    elif args.deputy:
+        gate = list(args.deputy_entitlement) if args.deputy_entitlement else None
+        rows = tg.deputies(args.deputy, gate_entitlements=gate)
+        if args.format == "json":
+            output = json.dumps(rows, indent=2)
+        else:
+            target = args.deputy
+            header = (f"{len(rows)} deputy candidate(s) for {target}: clients that look up "
+                      f"its Mach service and hold a gate entitlement (checked server-side, "
+                      f"falling back to <label>.*)\n")
+            lines = [header]
+            lines.append(f"  {'CLIENT':48} {'RUN_AS':12} {'PRIV':>5} {'VALIDATION':12} GATE ENTITLEMENTS")
+            for r in rows[: args.limit]:
+                lines.append(f"  {r['client'][:48]:48} {r['client_run_as']:12} "
+                             f"{'yes' if r['client_privileged'] else 'no':>5} "
+                             f"{r['client_validation']:12} {', '.join(r['gate_entitlements'])}")
+            if not rows:
+                lines.append("  (no deputies found — pass --deputy-entitlement to gate on an "
+                             "explicit entitlement)")
+            if len(rows) > args.limit:
+                lines.append(f"  ... +{len(rows) - args.limit} more (raise --limit)")
+            output = "\n".join(lines)
+
     elif args.node:
         ids = tg.resolve(args.node)
         if not ids:
@@ -283,7 +306,7 @@ def _cmd_graph(args: argparse.Namespace) -> int:
                   "json": lambda: json.dumps(sub.to_dict(), indent=2),
                   "text": lambda: to_text(tg, sub)}[args.format]()
     else:
-        print("pick one of --node, --path or --boundaries", file=sys.stderr)
+        print("pick one of --node, --path, --boundaries or --deputy", file=sys.stderr)
         return 2
 
     if args.output:
@@ -294,6 +317,56 @@ def _cmd_graph(args: argparse.Namespace) -> int:
     else:
         print(output)
     return 0
+
+
+def _cmd_probe(args: argparse.Namespace) -> int:
+    """ACTIVE probe: connect to exposed Mach services as an unprivileged client.
+
+    This is the one non-read-only subcommand. Everything else inspects; this
+    connects and sends real (empty / one-key) XPC messages to classify which
+    root services an unprivileged process can actually reach.
+    """
+    _setup_logging(args.verbose)
+    if not os.path.exists(args.report):
+        print(f"no report at {args.report} — run 'tbm scan' first, or pass --report", file=sys.stderr)
+        return 2
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+
+    from probes import format_json, format_text, run_probe, services_from_report
+    from probes.xpc import CtypesXPCBackend, XPCUnavailable, launchctl_liveness
+
+    services = services_from_report(report, only=args.service or None)
+    if not services:
+        where = f" matching {args.service}" if args.service else ""
+        print(f"no root/system Mach services{where} in {args.report}", file=sys.stderr)
+        return 1
+
+    try:
+        backend = CtypesXPCBackend()
+    except XPCUnavailable as exc:
+        print(f"XPC is unavailable here ({exc}); probe needs macOS.", file=sys.stderr)
+        return 3
+
+    liveness = launchctl_liveness(run)
+    rows = run_probe(services, backend, timeout=args.timeout, limit=args.limit,
+                     liveness=liveness)
+
+    output = format_json(rows) if args.format == "json" else format_text(rows)
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(output + "\n")
+        print(f"  {args.output}")
+    else:
+        print(output)
+
+    # ctypes + libdispatch can crash during interpreter teardown (a trailing
+    # event delivered to a torn-down callback). The work is done and flushed, so
+    # exit hard to guarantee a clean status instead of a teardown-time SIGSEGV.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 def _cmd_export(args: argparse.Namespace) -> int:
@@ -319,6 +392,100 @@ def _cmd_export(args: argparse.Namespace) -> int:
     if dossiers:
         print(f"    services/  ({dossiers} per-service dossiers)")
     return 0
+
+
+def _cmd_protocol(args: argparse.Namespace) -> int:
+    """Extract NSXPC-exported protocols from a Mach-O binary (or a service)."""
+    _setup_logging(args.verbose)
+    from collectors.nsxpc import extract_protocols
+
+    path, mach_services = _resolve_binary_or_service(args.target)
+    if not path:
+        print(f"could not resolve '{args.target}' to a binary", file=sys.stderr)
+        return 1
+
+    result = extract_protocols(path)
+    result["mach_service"] = mach_services[0] if mach_services else None
+
+    if args.format == "json":
+        output = json.dumps(result, indent=2)
+    else:
+        lines = [f"{path}"]
+        mach = result["mach_service"]
+        if mach:
+            lines.append(f"  mach service: {mach}")
+        for proto in result["protocols"]:
+            lines.append(f"\nprotocol {proto['name']}  ({len(proto['methods'])} methods)")
+            for m in proto["methods"]:
+                lines.append(f"  {m['signature']}")
+        if not result["protocols"]:
+            lines.append("\n(no NSXPC-exported protocols found)")
+        output = "\n".join(lines)
+
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(output + "\n")
+        print(f"  {args.output}")
+    else:
+        print(output)
+    return 0
+
+
+def _cmd_clientgen(args: argparse.Namespace) -> int:
+    """Emit a compilable Objective-C NSXPC client from an extracted protocol."""
+    _setup_logging(args.verbose)
+    from collectors.clientgen import generate_main_m
+
+    if not os.path.exists(args.protocol):
+        print(f"no protocol file at {args.protocol} — run 'tbm protocol' first", file=sys.stderr)
+        return 2
+    with open(args.protocol, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    mach_service = args.mach_service or data.get("mach_service")
+    if not mach_service:
+        print("no Mach service name: pass --mach-service or extract via a service label",
+              file=sys.stderr)
+        return 2
+
+    protocols = data.get("protocols") or []
+    if args.protocol_name:
+        protocols = [p for p in protocols if p.get("name") == args.protocol_name]
+        if not protocols:
+            print(f"no protocol named {args.protocol_name!r}", file=sys.stderr)
+            return 1
+    if not protocols:
+        print("the protocol file carries no protocols", file=sys.stderr)
+        return 1
+
+    try:
+        source = generate_main_m(protocols[0], mach_service, args.selector)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(source)
+        print(f"  {args.output}")
+    else:
+        print(source)
+    return 0
+
+
+def _resolve_binary_or_service(target: str):
+    """Return ``(binary_path, [mach_services])`` for a path or a service label."""
+    path = os.path.abspath(target)
+    if os.path.exists(path):
+        return path, []
+    label = target.lower()
+    matches = [s for s in discover_services() if label in s.label.lower()]
+    if matches:
+        svc = matches[0]
+        return svc.associated_executable, svc.mach_services
+    return None, []
 
 
 def _cmd_service(args: argparse.Namespace) -> int:
@@ -373,6 +540,26 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--verbose", action="store_true")
     sv.set_defaults(func=_cmd_service)
 
+    pr = sub.add_parser(
+        "protocol",
+        help="extract NSXPC-exported protocols from a binary or service")
+    pr.add_argument("target", help="binary path or launchd service label")
+    pr.add_argument("--format", choices=["text", "json"], default="text")
+    pr.add_argument("--output", help="write to a file instead of stdout")
+    pr.add_argument("--verbose", action="store_true")
+    pr.set_defaults(func=_cmd_protocol)
+
+    cg = sub.add_parser(
+        "clientgen",
+        help="generate a compilable Objective-C NSXPC client from an extracted protocol")
+    cg.add_argument("protocol", help="protocol JSON written by 'tbm protocol --format json'")
+    cg.add_argument("--mach-service", help="Mach service name (overrides the extracted one)")
+    cg.add_argument("--protocol-name", help="which protocol to generate (default first)")
+    cg.add_argument("--selector", help="method to call (default: first method)")
+    cg.add_argument("--output", default=None, help="write main.m here instead of stdout")
+    cg.add_argument("--verbose", action="store_true")
+    cg.set_defaults(func=_cmd_clientgen)
+
     e = sub.add_parser("export", help="export an existing report as per-entity CSV / Markdown")
     e.add_argument("--report", default="./results/report.json", help="report.json to read")
     e.add_argument("--output", default="./results/export", help="output directory")
@@ -391,6 +578,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="shortest routes between two entities")
     g.add_argument("--boundaries", action="store_true",
                    help="every non-root client naming a root daemon's Mach service")
+    g.add_argument("--deputy", metavar="DAEMON",
+                   help="deputy candidates for a daemon: clients that look up its "
+                        "Mach service and hold a <label>.* entitlement")
+    g.add_argument("--deputy-entitlement", action="append", metavar="ENT",
+                   help="--deputy: gate on this entitlement key instead of the "
+                        "<label>.* heuristic (repeatable)")
     g.add_argument("--depth", type=int, default=0, help="hops (default 1 for --node, 6 for --path)")
     g.add_argument("--edge", action="append",
                    help="restrict to an edge type (repeatable): PROVIDES, LOOKS_UP, LINKS_TO, ...")
@@ -406,6 +599,20 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--output", help="write to a file instead of stdout")
     g.add_argument("--verbose", action="store_true")
     g.set_defaults(func=_cmd_graph)
+
+    pr = sub.add_parser(
+        "probe",
+        help="ACTIVE: connect to exposed Mach services as an unprivileged client")
+    pr.add_argument("--report", default="./results/report.json", help="report.json to read")
+    pr.add_argument("--service", action="append", metavar="LABEL",
+                    help="probe only providers whose label contains LABEL (repeatable)")
+    pr.add_argument("--limit", type=int, default=None, help="cap number of services probed")
+    pr.add_argument("--timeout", type=float, default=3.0,
+                    help="seconds to wait per sub-probe (default 3)")
+    pr.add_argument("--format", choices=["text", "json"], default="text")
+    pr.add_argument("--output", help="write to a file instead of stdout")
+    pr.add_argument("--verbose", action="store_true")
+    pr.set_defaults(func=_cmd_probe)
 
     return p
 

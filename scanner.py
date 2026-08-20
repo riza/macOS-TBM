@@ -75,6 +75,7 @@ def analyze_service(svc, exe: Executable) -> Target:
         validation=sig_result.validation,
         validation_assessment=sig_result.validation_assessment,
         entitlement_findings=ent_result.high_value,
+        checked_entitlements=sig_result.checked_entitlements,
         why_interesting=why,
         research_questions=questions,
         research_leads=why + questions,

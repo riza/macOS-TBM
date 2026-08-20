@@ -95,6 +95,20 @@
       }
     }
   },
+  "server_entitlement_check": {
+    "description": "Static indicators the binary checks entitlements on its XPC clients. When one of these markers is present, com.apple.* strings in the binary that are NOT among its own held entitlements become candidate 'checked' keys.",
+    "symbols": [
+      "xpc_connection_copy_entitlement_value",
+      "SecTaskCopyValueForEntitlement",
+      "audit_token_to_pid"
+    ],
+    "strings": [
+      "valueForEntitlement:",
+      "remoteProcessHasBooleanEntitlement:",
+      "missing entitlement",
+      "not entitled"
+    ]
+  },
   "ipc_provider": {
     "description": "Static indicators the binary provides an IPC/Mach/XPC service.",
     "symbols": [

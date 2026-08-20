@@ -209,6 +209,15 @@ def build_graph(targets: List[Any]) -> Graph:
                 if exe_id:
                     g.add_edge(Edge(exe_id, ent_id, "HAS_ENTITLEMENT", "has entitlement"))
 
+        # Server-side entitlement checks: the daemon gates its clients on these
+        # keys. Distinct from HAS_ENTITLEMENT — a checked key is one the daemon
+        # queries on *others*, and it usually does not hold it itself.
+        for key in getattr(t, "checked_entitlements", None) or []:
+            ent_id = f"ent:{key}"
+            g.add_node(Node(ent_id, "Entitlement", key))
+            g.add_edge(Edge(svc_id, ent_id, "CHECKED_ENTITLEMENT",
+                            "checks client entitlement", {"evidence": "server-side-check"}))
+
         # Sensitive subsystems.
         for sink in t.sensitive_sinks:
             subsys_id = f"subsystem:{sink}"
