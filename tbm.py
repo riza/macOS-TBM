@@ -23,6 +23,7 @@ from typing import List, Optional
 
 from collectors import discover_services, inspect_codesign, inspect_macho
 from app_info import version_string
+from hunt import format_single, format_text, score_report
 from graph.exporters import export_dot, export_json, export_mermaid
 from graph.query import (
     TrustGraph,
@@ -425,6 +426,78 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_hunt(args: argparse.Namespace) -> int:
+    """Score targets in an existing report for bug-bounty signals (LPE/RCE/DOS/CRED).
+
+    Read-only — no new analysis, no launchd mutations.
+    """
+    _setup_logging(args.verbose)
+    if not os.path.exists(args.report):
+        print(f"no report at {args.report} — run 'tbm scan' first, or pass --report",
+              file=sys.stderr)
+        return 2
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+
+    results = score_report(report)
+
+    # --label: single-target brief
+    if args.label:
+        needle = args.label.lower()
+        matches = [r for r in results if needle in r.label.lower()]
+        if not matches:
+            print(f"no target matching '{args.label}'", file=sys.stderr)
+            return 1
+        for m in matches:
+            print(format_single(m))
+        return 0
+
+    # --class: sort by a single dimension
+    if getattr(args, "class_filter", None):
+        cls = args.class_filter
+        if cls == "all":
+            pass  # keep total sort
+        else:
+            results.sort(key=lambda r: getattr(r, cls, 0), reverse=True)
+
+    top = getattr(args, "top", 30)
+    if getattr(args, "min_score", None) is not None:
+        results = [r for r in results if r.total >= args.min_score]
+    if getattr(args, "min_tbm_score", None) is not None:
+        results = [r for r in results if r.tbm_score >= args.min_tbm_score]
+
+    if args.format == "json":
+        from utils.jsonio import dumps as json_dumps
+        payload = [
+            {
+                "label": r.label,
+                "tbm_score": r.tbm_score,
+                "run_as": r.run_as,
+                "validation": r.validation,
+                "mach_count": r.mach_count,
+                "lpe": r.lpe,
+                "rce": r.rce,
+                "dos": r.dos,
+                "cred": r.cred,
+                "total": r.total,
+                "flags": r.flags(),
+                "sinks": r.sinks,
+                "held_ents": r.held_ents,
+                "checked_ents": r.checked_ents,
+                "not_observed": r.not_observed,
+            }
+            for r in results[:top]
+        ]
+        print(json_dumps(payload))
+        return 0
+
+    # text output
+    clsinfo = f"  class filter: --class {args.class_filter}" if getattr(args, "class_filter", None) else ""
+    print(f"{clsinfo}")
+    print(format_text(results, top=top))
+    return 0
+
+
 def _cmd_tui(args: argparse.Namespace) -> int:
     """Review an existing JSON report in the terminal, dossiers included."""
     _setup_logging(args.verbose)
@@ -681,6 +754,25 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--verbose", action="store_true")
     pr.set_defaults(func=_cmd_probe)
 
+    h = sub.add_parser(
+        "hunt",
+        help="score targets in a report for bug-bounty signals (LPE/RCE/DOS/CRED)")
+    h.add_argument("--report", default="./results/report.json", help="report.json to read")
+    h.add_argument("--label", metavar="DAEMON",
+                   help="single-target detailed brief (substring match)")
+    h.add_argument("--class", dest="class_filter",
+                   choices=["lpe", "rce", "dos", "cred", "all"],
+                   help="sort by a single bug-bounty dimension")
+    h.add_argument("--top", type=int, default=30, help="top N targets (default 30)")
+    h.add_argument("--min-score", type=int, default=None,
+                   help="minimum total bug-bounty score")
+    h.add_argument("--min-tbm-score", type=int, default=None,
+                   help="minimum original TBM score")
+    h.add_argument("--format", choices=["text", "json"], default="text")
+    h.add_argument("-out", "--output", help="write to a file (default: stdout)")
+    h.add_argument("--verbose", action="store_true")
+    h.set_defaults(func=_cmd_hunt)
+
     return p
 
 
@@ -691,7 +783,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     machine_output = False
     if args.command == "scan":
         machine_output = output_destination is None and getattr(args, "json", False)
-    if args.command in {"graph", "probe", "protocol", "clientgen"}:
+    if args.command in {"graph", "probe", "protocol", "clientgen", "hunt"}:
         machine_output = output_destination is None
     print_banner(args.command, stream=sys.stderr if machine_output else sys.stdout)
     return args.func(args)
