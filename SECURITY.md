@@ -4,7 +4,11 @@
 
 macOS-TBM is a defensive research tool. It reads launchd plists, code-signing
 metadata and Mach-O structure, and it writes a report. It never modifies the
-system, never talks to a live service, and never attempts exploitation.
+system and never attempts exploitation. Every command except `probe` is
+read-only and never talks to a live service; `probe` is opt-in, connects to
+already-exposed Mach services as an unprivileged client to classify
+reachability, and sends no payload beyond an empty and a malformed test
+message.
 
 ## Reporting a vulnerability *in macOS-TBM*
 

@@ -22,6 +22,11 @@
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://x.com/rizasabuncu"><img alt="twitter" src="https://img.shields.io/badge/%40rizasabuncu-000000?style=flat-square&logo=x&logoColor=white"></a>
+  <a href="https://buymeacoffee.com/rizasabuncu"><img alt="buy me a coffee" src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=000000"></a>
+</p>
+
 ---
 
 macOS-TBM enumerates every launchd job on the system, correlates its plist,
@@ -876,6 +881,15 @@ cannot show you; it correlates all of it at once and explains the ranking.
 
 ---
 
+## Author
+
+**Rıza Sabuncu** — [@rizasabuncu](https://x.com/rizasabuncu)
+
+If macOS-TBM saves you an afternoon of reading `otool` output, you can
+[buy me a coffee](https://buymeacoffee.com/rizasabuncu).
+
+---
+
 ## License
 
-[MIT](LICENSE) © macOS-TBM contributors
+[MIT](LICENSE) © Rıza Sabuncu
