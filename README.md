@@ -881,15 +881,9 @@ cannot show you; it correlates all of it at once and explains the ranking.
 
 ---
 
-## Author
+## Author & License
 
-**Rıza Sabuncu** — [@rizasabuncu](https://x.com/rizasabuncu)
+[MIT](LICENSE) © **Rıza Sabuncu** — [@rizasabuncu](https://x.com/rizasabuncu)
 
 If macOS-TBM saves you an afternoon of reading `otool` output, you can
 [buy me a coffee](https://buymeacoffee.com/rizasabuncu).
-
----
-
-## License
-
-[MIT](LICENSE) © Rıza Sabuncu
