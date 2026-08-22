@@ -1,0 +1,12 @@
+string vaddr: 0x1012d0a70
+  ref at:     0x100630cb4
+  function:   0x100630a20
+  context:
+    0000000100630ca4	strh	wzr, [x0]
+    0000000100630ca8	adrp	x0, -1584 ; 0x100000000
+    0000000100630cac	add	x0, x0, #0x0
+    0000000100630cb0	adrp	x3, 3232 ; 0x1012d0000
+    0000000100630cb4	add	x3, x3, #0xa70 ; literal pool for: "Temporarily allowing FMCA client without explicit entitlement."
+    0000000100630cb8	and	w2, w27, #0xff
+    0000000100630cbc	mov	x1, x20
+    0000000100630cc0	mov	x4, x28

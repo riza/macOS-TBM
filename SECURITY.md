@@ -2,13 +2,15 @@
 
 ## What this tool is
 
-macOS-TBM is a defensive research tool. It reads launchd plists, code-signing
-metadata and Mach-O structure, and it writes a report. It never modifies the
-system and never attempts exploitation. Every command except `probe` is
-read-only and never talks to a live service; `probe` is opt-in, connects to
-already-exposed Mach services as an unprivileged client to classify
+macOS-TBM is a security-research tool. It reads launchd plists, code-signing
+metadata and Mach-O structure, and it writes a report. Its static analysis
+never modifies the system and never attempts exploitation. Every command except
+`probe` is read-only and never talks to a live service; `probe` is opt-in,
+connects to already-exposed Mach services as an unprivileged client to classify
 reachability, and sends no payload beyond an empty and a malformed test
-message.
+message. Runtime hooks and PoC clients (see the `research` / `bug-bounty` /
+`exploit` skills) are the same kind of active phase: opt-in and gated on
+explicit user authorization for that phase, never implied by a static finding.
 
 ## Reporting a vulnerability *in macOS-TBM*
 

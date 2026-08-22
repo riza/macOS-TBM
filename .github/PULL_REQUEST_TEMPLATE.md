@@ -12,7 +12,7 @@
 
 ## Checklist
 
-- [ ] Read-only: no launchd mutation, no XPC/Mach messages, no file writes to inspected paths
+- [ ] Analysis read-only by default; any active behavior lives in an opt-in command (`probe`-style) that requires user authorization and never runs in a scan
 - [ ] No vulnerability claims; findings keep their FACT / HEURISTIC / UNKNOWN level
 - [ ] Standard library only
 - [ ] `python3 -m unittest discover -s tests -t tests` passes

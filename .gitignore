@@ -3,3 +3,4 @@ __pycache__/
 results/
 results-*/
 .pytest_cache/
+converstaion.txt
