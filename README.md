@@ -11,7 +11,8 @@
 
 <p align="center">
   <strong>macOS Trust Boundary Mapper</strong><br>
-  Static, read-only attack-surface mapping for every launchd service on a Mac.
+  Attack-surface research for every launchd service on a Mac — from static
+  mapping to verified reachability.
 </p>
 
 <p align="center">
@@ -37,7 +38,9 @@ HTML dashboard and a trust-boundary graph.
 > [!IMPORTANT]
 > The tool maps **attack surface**. It does **not** determine exploitability.
 > Absence of a static security signal is **never** a claim of a vulnerability.
-> Run it only on systems you are authorised to analyse.
+> Static analysis is read-only by default; active work (`probe`, runtime
+> verification, PoC clients) is opt-in and every phase requires explicit
+> authorization. Run it only on systems you are authorised to analyse.
 
 ```console
 $ python3 tbm.py scan
@@ -211,9 +214,12 @@ CDN, no tracking. It carries its own data and renders:
 - macOS (uses `codesign`, `lipo`, `otool`, `nm`, `strings`, `plutil`).
 - Python 3.10+ (standard library required; Rich and tqdm are optional UI packages).
 
-The scanner is **read-only**: it never modifies launchd configuration, never
-loads/unloads services, never sends XPC messages, and never mutates the files it
-inspects.
+Analysis is **read-only by default**: the scanner never modifies launchd
+configuration, never loads/unloads services, never sends XPC messages, and never
+mutates the files it inspects. Active work — `tbm probe`, frida/lldb runtime
+verification, and PoC clients from the `research`, `bug-bounty`, and `exploit`
+skills — is opt-in and each phase needs explicit authorization on the live
+system.
 
 ---
 
@@ -273,6 +279,20 @@ python3 tbm.py protocol com.apple.mobileactivationd --format json --output proto
 python3 tbm.py clientgen proto.json --mach-service com.apple.mobileactivationd -o main.m
 clang -fobjc-arc -framework Foundation main.m -o client
 
+# Bug-bounty triage over an existing report (LPE / RCE / DOS / CRED signals)
+python3 tbm.py hunt
+python3 tbm.py hunt --class lpe --top 20
+python3 tbm.py hunt --min-score 100 --min-tbm-score 80 --format json
+python3 tbm.py hunt --label com.apple.example          # single-target brief
+
+# Which scanned targets hold a given entitlement (report.json query)
+python3 tbm.py entowners com.apple.private.tcc
+python3 tbm.py entowners com.apple.private --contains
+
+# Find code references to a string inside a Mach-O (RE helper)
+python3 tbm.py xref /usr/libexec/exampled com.apple.example
+python3 tbm.py xref /usr/libexec/exampled com.apple --arch arm64e --context 32 --format json
+
 # More parallelism / verbosity
 python3 tbm.py scan --workers 16 --verbose
 ```
@@ -285,7 +305,14 @@ what was written. Use `--detail` to print the dossiers in the terminal as well,
 `--detail-limit N` to cap how many are written, `--list-limit N` to cap long
 lists inside one, `-out DIR` for another directory, or `--json` to stream the
 report to stdout instead (the one mode that writes nothing). `graph`, `probe`, `protocol`, and `clientgen` print to stdout by
-default; pass `-out <file>` when a file is needed.
+default; pass `-out <file>` when a file is needed. `hunt`, `xref`, and
+`entowners` also print to stdout by default and accept `-out <file>` (see their
+`--help`). `hunt` reads `./results/report.json` by default (`--report`), as do
+`graph` and `entowners`. `xref` takes a Mach-O path and a string; it handles fat
+binaries via `--arch` and supports `arm64`/`arm64e` `adrp`/`add` literal-pool
+cross-references. `hunt` scores every target with bug-bounty dimensions
+(LPE/RCE/DOS/CRED) on top of the original TBM score and prints an ordered,
+linpeas-style table; `--label` prints one target's full brief.
 
 Outputs (under `--output`, default `./results`):
 
@@ -413,14 +440,16 @@ string evidence, a solid one an entitlement; a hollow node is a disabled job.
 
 ---
 
-## Probing reachability — the one active command
+## Probing reachability — the one active built-in command
 
 > [!WARNING]
-> `tbm probe` is the **only** command that is not read-only. Every other command
-> inspects; `probe` *connects* to exposed Mach services and sends real (empty and
-> one-key) XPC messages, as an unprivileged client, to classify which root
-> services an unprivileged process can actually reach. It runs as your normal
-> user — never `sudo` — and it is opt-in: a scan never probes.
+> `tbm probe` is the **only built-in scanner command** that is not read-only.
+> Every other command inspects; `probe` *connects* to exposed Mach services and
+> sends real (empty and one-key) XPC messages, as an unprivileged client, to
+> classify which root services an unprivileged process can actually reach. It
+> runs as your normal user — never `sudo` — and it is opt-in: a scan never
+> probes. Runtime hooks and PoC clients from the `exploit` skill are the same
+> kind of active phase and need the same explicit authorization.
 
 Static analysis tells you a root daemon *exposes* a Mach service; it cannot tell
 you whether an unprivileged process can *reach* it. Confirming that is the #1
@@ -861,8 +890,8 @@ smoke scan of the runner's own LaunchDaemons — see
 False-positive reports are the most valuable contribution this project can get:
 open one with the command output that contradicts the report and it becomes a
 rule fix plus a regression test. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-two hard rules (stay read-only, never claim a vulnerability) and for how the
-rule matcher works before you tune `rules/*.json`.
+two hard rules (keep analysis read-only, never claim a vulnerability) and for
+how the rule matcher works before you tune `rules/*.json`.
 
 - [Report a false positive](../../issues/new?template=false_positive.md)
 - [Report a bug](../../issues/new?template=bug_report.md)

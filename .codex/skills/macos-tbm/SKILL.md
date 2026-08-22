@@ -1,12 +1,14 @@
 ---
 name: macos-tbm
-description: Use this repository's macOS Trust Boundary Mapper to scan launchd services and Mach/XPC attack surfaces, inspect binaries and code-signing metadata, query trust-boundary graphs, export reports, and interpret findings conservatively. Trigger for requests about running, extending, testing, or explaining this project's CLI, rules, reports, probes, or analyzers.
+description: Use this repository's macOS Trust Boundary Mapper to scan launchd services and Mach/XPC attack surfaces, inspect binaries and code-signing metadata, query trust-boundary graphs, export reports, triage bug-bounty signals, and interpret findings conservatively. Trigger for requests about running, extending, testing, or explaining this project's CLI, rules, reports, probes, or analyzers.
 ---
 
 # macOS-TBM project skill
 
-This is a static/read-only research tool for mapping attack surface. It does not
-establish exploitability.
+This is a research tool for mapping attack surface. Static analysis is
+read-only by default and does not establish exploitability; active phases
+(`probe`, frida/lldb attach, PoC clients) are opt-in and need explicit user
+authorization before each one.
 
 ## Safety and evidence rules
 
@@ -16,12 +18,13 @@ establish exploitability.
 - `probe` is active: it creates XPC connections and sends test messages. Run it
   only when the user explicitly requests active probing and confirms authorized
   use; label its results as runtime evidence.
+- Active phases are opt-in per phase — `probe`, runtime hooks, and PoC clients
+  each need their own explicit user authorization, and the authorization is
+  never implied by a static finding.
 - Never turn `not observed` into `absent`, `safe`, or proof of exploitability.
   Preserve `NONE_OBSERVED`, `WEAK`, `MEDIUM`, and `STRONG` exactly.
 - Distinguish linked frameworks from imported APIs, declared lookups from
   successful connections, and client-held entitlements from server checks.
-- Do not recommend exploit development, credential access, persistence, or
-  bypassing caller validation. Keep work defensive and review-oriented.
 
 ## Standard workflow
 
@@ -57,13 +60,22 @@ many entries were withheld.
 
 ## Output and scripting
 
-`graph`, `probe`, `protocol`, and `clientgen` stream to stdout by default. Pass
-`-out <file>` only when persistence is needed:
+`graph`, `probe`, `protocol`, `clientgen`, `hunt`, `xref`, and `entowners`
+stream to stdout by default. Pass `-out <file>` only when persistence is needed:
 
 ```bash
 python3 tbm.py graph --boundaries --format json | jq 'length'
 python3 tbm.py protocol com.apple.example --format json
+python3 tbm.py hunt --class lpe --top 20
+python3 tbm.py hunt --label com.apple.example
+python3 tbm.py entowners com.apple.private.tcc --contains
+python3 tbm.py xref /usr/libexec/exampled com.apple.example --arch arm64e
 ```
+
+`hunt` adds bug-bounty dimensions (LPE/RCE/DOS/CRED) on top of the TBM score,
+`entowners` lists which scanned targets hold an entitlement, and `xref` finds
+code references to a string in a Mach-O (RE helper). All three are read-only and
+operate on an existing `./results/report.json` or a binary path.
 
 For `scan`, the default is a compact terminal summary plus artifacts in
 `./results`. Use JSON for a pipe, or `-out` for another directory:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""macOS-TBM (Trust Boundary Mapper) — read-only attack-surface research tool.
+"""macOS-TBM (Trust Boundary Mapper) — attack-surface research tool.
 
 Usage:
     python3 tbm.py scan [--output ./results] [--json] [--html] [--graph] [--verbose]
@@ -7,9 +7,10 @@ Usage:
     python3 tbm.py inspect /usr/libexec/exampled
     python3 tbm.py service com.apple.example
 
-Static/read-only analysis only. The tool maps attack surface; it does NOT
-determine exploitability. Absence of a static security signal is never a claim
-of a vulnerability.
+Static analysis is read-only by default; `probe` is the one active built-in
+command and is opt-in. The tool maps attack surface; it does NOT determine
+exploitability. Absence of a static security signal is never a claim of a
+vulnerability.
 """
 
 from __future__ import annotations
@@ -23,7 +24,9 @@ from typing import List, Optional
 
 from collectors import discover_services, inspect_codesign, inspect_macho
 from app_info import version_string
+from entowners import entowners_contains, entowners_exact
 from hunt import format_single, format_text, score_report
+from xref import format_xref, xref_string
 from graph.exporters import export_dot, export_json, export_mermaid
 from graph.query import (
     TrustGraph,
@@ -360,7 +363,7 @@ def _cmd_graph(args: argparse.Namespace) -> int:
 def _cmd_probe(args: argparse.Namespace) -> int:
     """ACTIVE probe: connect to exposed Mach services as an unprivileged client.
 
-    This is the one non-read-only subcommand. Everything else inspects; this
+    This is the one active built-in subcommand. Everything else inspects; this
     connects and sends real (empty / one-key) XPC messages to classify which
     root services an unprivileged process can actually reach.
     """
@@ -426,6 +429,77 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_xref(args: argparse.Namespace) -> int:
+    """Find code references to a string in a Mach-O binary (RE helper).
+
+    Read-only: parses the Mach-O and streams the disassembly; no launchd
+    contact. arm64/arm64e cross-references (adrp+add literal pools).
+    """
+    _setup_logging(args.verbose)
+    path = os.path.abspath(args.binary)
+    if not os.path.exists(path):
+        print(f"error: {path} does not exist", file=sys.stderr)
+        return 1
+    try:
+        results = xref_string(
+            path,
+            args.string,
+            arch=args.arch,
+            context=args.context,
+            max_refs=args.max_refs,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.format == "json":
+        payload = [
+            {
+                "string_vaddr": hex(r.string_vaddr),
+                "ref_vaddr": hex(r.ref_vaddr),
+                "function": hex(r.function) if r.function else None,
+                "context": r.context,
+            }
+            for r in results
+        ]
+        output = json_dumps(payload)
+    else:
+        output = format_xref(results)
+    _write_output(output, args.output)
+    return 0
+
+
+def _cmd_entowners(args: argparse.Namespace) -> int:
+    """List which scanned targets hold a given entitlement.
+
+    Read-only over report.json; no new analysis, no launchd mutations.
+    """
+    _setup_logging(args.verbose)
+    if not os.path.exists(args.report):
+        print(f"no report at {args.report} — run 'tbm scan' first, or pass --report",
+              file=sys.stderr)
+        return 2
+    with open(args.report, "r", encoding="utf-8") as fh:
+        report = json.load(fh)
+
+    if args.contains:
+        rows = entowners_contains(report, args.entitlement)
+    else:
+        rows = entowners_exact(report, args.entitlement)
+
+    if args.format == "json":
+        output = json_dumps(rows)
+    elif not rows:
+        output = f"no target holds an entitlement matching '{args.entitlement}'"
+    else:
+        output = "\n".join(
+            f'{r["score"]:>3} {str(r["run_as"]):15s} {r["validation"]:14s} '
+            f'{r["label"]}  [{", ".join(r["matching"])}]'
+            for r in rows
+        )
+    _write_output(output, args.output)
+    return 0
+
+
 def _cmd_hunt(args: argparse.Namespace) -> int:
     """Score targets in an existing report for bug-bounty signals (LPE/RCE/DOS/CRED).
 
@@ -448,8 +522,7 @@ def _cmd_hunt(args: argparse.Namespace) -> int:
         if not matches:
             print(f"no target matching '{args.label}'", file=sys.stderr)
             return 1
-        for m in matches:
-            print(format_single(m))
+        _write_output("\n\n".join(format_single(m) for m in matches), args.output)
         return 0
 
     # --class: sort by a single dimension
@@ -488,13 +561,15 @@ def _cmd_hunt(args: argparse.Namespace) -> int:
             }
             for r in results[:top]
         ]
-        print(json_dumps(payload))
+        _write_output(json_dumps(payload), args.output)
         return 0
 
     # text output
-    clsinfo = f"  class filter: --class {args.class_filter}" if getattr(args, "class_filter", None) else ""
-    print(f"{clsinfo}")
-    print(format_text(results, top=top))
+    parts = []
+    if getattr(args, "class_filter", None):
+        parts.append(f"  class filter: --class {args.class_filter}")
+    parts.append(format_text(results, top=top))
+    _write_output("\n".join(parts), args.output)
     return 0
 
 
@@ -622,7 +697,7 @@ def _cmd_service(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tbm",
-        description="macOS-TBM — static, read-only trust-boundary and attack-surface mapper",
+        description="macOS-TBM — trust-boundary and attack-surface research tool",
     )
     p.add_argument("--version", action="version", version=version_string())
     sub = p.add_subparsers(dest="command", required=True)
@@ -773,6 +848,35 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--verbose", action="store_true")
     h.set_defaults(func=_cmd_hunt)
 
+    x = sub.add_parser(
+        "xref",
+        help="find code references to a string in a Mach-O binary (RE helper)")
+    x.add_argument("binary", help="Mach-O path (fat OK, use --arch to pick a slice)")
+    x.add_argument("string", help="C string (or substring) to cross-reference")
+    x.add_argument("--arch", default=None,
+                   help="slice of a fat binary (arm64e, arm64, x86_64)")
+    x.add_argument("--context", type=int, default=16,
+                   help="disassembly lines around each reference (default 16)")
+    x.add_argument("--max-refs", type=int, default=20,
+                   help="stop after this many references (default 20)")
+    x.add_argument("--format", choices=["text", "json"], default="text")
+    x.add_argument("-out", "--output", help="write to a file (default: stdout)")
+    x.add_argument("--verbose", action="store_true")
+    x.set_defaults(func=_cmd_xref)
+
+    e = sub.add_parser(
+        "entowners",
+        help="list which scanned targets hold a given entitlement")
+    e.add_argument("entitlement",
+                   help="entitlement key (exact by default, substring with --contains)")
+    e.add_argument("--contains", action="store_true",
+                   help="treat ENTITLEMENT as a substring match")
+    e.add_argument("--report", default="./results/report.json", help="report.json to read")
+    e.add_argument("--format", choices=["text", "json"], default="text")
+    e.add_argument("-out", "--output", help="write to a file (default: stdout)")
+    e.add_argument("--verbose", action="store_true")
+    e.set_defaults(func=_cmd_entowners)
+
     return p
 
 
@@ -783,7 +887,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     machine_output = False
     if args.command == "scan":
         machine_output = output_destination is None and getattr(args, "json", False)
-    if args.command in {"graph", "probe", "protocol", "clientgen", "hunt"}:
+    if args.command in {"graph", "probe", "protocol", "clientgen", "hunt",
+                        "xref", "entowners"}:
         machine_output = output_destination is None
     print_banner(args.command, stream=sys.stderr if machine_output else sys.stdout)
     return args.func(args)

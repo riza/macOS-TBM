@@ -44,6 +44,9 @@ class TestOutputDestinations(unittest.TestCase):
             ["clientgen", "protocol.json"],
             ["graph", "--node", "node"],
             ["probe"],
+            ["hunt"],
+            ["xref", "binary", "string"],
+            ["entowners", "entitlement"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):

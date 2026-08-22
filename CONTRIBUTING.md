@@ -3,14 +3,21 @@
 Thanks for helping map the surface. This project has one hard rule and a few
 soft ones.
 
-## The hard rule: read-only, always
+## The hard rule: analysis stays read-only by default
 
-macOS-TBM never modifies the system it inspects. A contribution may **not**:
+macOS-TBM's analysis never modifies the system it inspects. A contribution may
+**not**:
 
 - load, unload, enable, disable, `kickstart` or `bootout` a launchd job,
-- send an XPC or Mach message to a live service,
+- send an XPC or Mach message to a live service from analysis code,
 - write to, patch or re-sign any inspected file,
-- fuzz, probe or exploit anything.
+- add fuzzing or exploitation to the scanner itself.
+
+Active behavior belongs in a clearly-marked, opt-in command (like `probe`) that
+is never run during a scan, prints what it does, and requires the operator's
+explicit authorization before touching the live system. The repository's
+`research`, `bug-bounty`, and `exploit` skills gate their own active phases the
+same way.
 
 Every external command goes through `utils.commands.run`: `shell=False`, a
 timeout, captured errors. If you need a new command, add it there and make sure
