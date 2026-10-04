@@ -200,7 +200,7 @@ class Radare2Progress:
                 counts=counts, current=current,
             )
         else:
-            line = f"\r  Radare2: {counts} | {event.get('path') or current}"
+            line = f"\r  Radare2: {counts} | {current}"
             print(f"{line[:180]:<180}", end="", file=self.stream, flush=True)
             self._line_active = True
             if event.get("stage") == "complete":

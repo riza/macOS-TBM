@@ -37,13 +37,9 @@ and follow the evidence into a disassembler.
 
 ## Preview
 
-### HTML report
-
-![macOS-TBM HTML report demo](docs/images/tbm-report.gif)
-
-### Terminal dashboard
-
-![macOS-TBM terminal dashboard demo](docs/images/tbm-tui.gif)
+| HTML report | Terminal dashboard |
+|---|---|
+| ![macOS-TBM HTML report demo](docs/images/tbm-report.gif) | ![macOS-TBM terminal dashboard demo](docs/images/tbm-tui.gif) |
 
 ## Research beta
 

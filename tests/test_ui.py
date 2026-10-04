@@ -6,6 +6,7 @@ import asyncio
 import io
 import unittest
 from contextlib import redirect_stdout
+from unittest.mock import patch
 
 import _paths  # noqa: F401
 
@@ -157,6 +158,23 @@ class TestUI(unittest.TestCase):
         self.assertIn("0/399 binaries", text)
         self.assertIn("exampled", text)
         self.assertIn("otherd", text)
+
+    def test_radare2_plain_fallback_lists_active_binaries(self):
+        output = io.StringIO()
+        with patch.dict("sys.modules", {"rich.console": None}), \
+                Radare2Progress(enabled=True, stream=output) as progress:
+            self.assertIsNone(progress._progress)
+            progress.update({
+                "findings_done": 25, "findings_total": 2425,
+                "findings_remaining": 2400,
+                "binaries_done": 0, "binaries_total": 399,
+                "path": "/usr/libexec/exampled", "stage": "analyzing",
+                "active_paths": ["/usr/libexec/exampled", "/usr/libexec/otherd"],
+            })
+        text = output.getvalue()
+        self.assertIn("25/2425 findings", text)
+        self.assertIn("0/399 binaries", text)
+        self.assertIn("exampled, otherd", text)
 
     def test_banner_contains_identity_version_and_build(self):
         output = io.StringIO()
