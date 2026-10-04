@@ -1,0 +1,2 @@
+# Optional: only required by --deep-analysis radare2
+r2pipe>=1.9.4

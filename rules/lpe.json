@@ -1,0 +1,59 @@
+{
+  "filesystem_sinks": {
+    "open": ["open", "openat", "contentsAtPath:", "createFileAtPath:"],
+    "rename": ["rename", "renameat", "renamex_np", "renameatx_np", "moveItemAtPath:", "replaceItemAtURL:"],
+    "chmod": ["chmod", "fchmod", "fchmodat", "setAttributes:ofItemAtPath:"],
+    "chown": ["chown", "fchown", "lchown"],
+    "unlink": ["unlink", "unlinkat", "remove", "removefile", "removeItemAtPath:"],
+    "mkdir": ["mkdir", "mkdirat", "createDirectoryAtPath:"],
+    "copy": ["copyfile", "clonefile", "copyItemAtPath:"],
+    "link": ["symlink", "symlinkat", "link", "linkat", "createSymbolicLinkAtPath:"]
+  },
+  "toctou_checks": [
+    "stat", "lstat", "fstatat", "access", "faccessat", "realpath",
+    "fileExistsAtPath:", "isReadableFileAtPath:", "isWritableFileAtPath:"
+  ],
+  "resource_validation": [
+    "realpath", "lstat", "fstatat", "sandbox_check"
+  ],
+  "resource_checks": {
+    "PATH_SCOPE_GUARD": ["realpath", "sandbox_check", "sandbox_check_by_audit_token"],
+    "DESCRIPTOR_BINDING": ["fstat", "fchown", "fchmod", "ftruncate", "fcntl"],
+    "METADATA_CHECK": ["lstat", "stat", "fstatat", "getattrlist", "getattrlistbulk"]
+  },
+  "unsafe_temporary_paths": [
+    "/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp",
+    "/Library/Caches", "/Users/", "Library/Caches", "NSTemporaryDirectory"
+  ],
+  "sensitive_targets": [
+    {"category": "launch_daemon_plist", "patterns": ["/Library/LaunchDaemons/", "/System/Library/LaunchDaemons/"]},
+    {"category": "privileged_helper", "patterns": ["/Library/PrivilegedHelperTools/"]},
+    {"category": "privileged_executable", "patterns": ["/usr/local/bin/", "/usr/local/sbin/", "/Library/Apple/System/Library/CoreServices/"]},
+    {"category": "root_script", "patterns": ["/Library/Scripts/", "/private/var/root/"]},
+    {"category": "privileged_configuration", "patterns": ["/Library/Preferences/", "/etc/", "/private/etc/"]},
+    {"category": "authorization_configuration", "patterns": ["/etc/authorization", "/private/etc/authorization", "/Library/Security/"]}
+  ],
+  "detectors": {
+    "FS_USER_PATH_TO_ROOT_SINK": {"description": "IPC-derived path reaches a privileged filesystem operation"},
+    "FS_PRIVILEGED_RENAME": {"operations": ["rename"]},
+    "FS_PRIVILEGED_CHMOD": {"operations": ["chmod"]},
+    "FS_PRIVILEGED_CHOWN": {"operations": ["chown"]},
+    "FS_SYMLINK_FOLLOW": {"operations": ["open", "link"]},
+    "FS_TOCTOU": {"description": "pathname check followed by a later pathname operation"},
+    "FS_UNSAFE_TEMP": {"description": "operation is correlated with a commonly writable temporary location"},
+    "FS_WRITABLE_PARENT": {"description": "target parent is commonly user writable"},
+    "FS_PLIST_OVERWRITE": {"description": "write-like operation targets a privileged plist location"},
+    "FS_EXECUTABLE_OVERWRITE": {"description": "write-like operation targets a privileged executable location"}
+  },
+  "weights": {
+    "privileged_process": 20,
+    "attacker_controlled_path": 20,
+    "dangerous_filesystem_sink": 15,
+    "caller_validation_none_observed": 20,
+    "resource_validation_none_observed": 15,
+    "sensitive_target": 25,
+    "toctou_pattern": 20,
+    "unsafe_temporary_path": 10
+  },
+  "thresholds": {"high": 70, "medium": 45}
+}

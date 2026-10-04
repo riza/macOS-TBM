@@ -1,0 +1,76 @@
+{
+  "high_value_entitlement_categories": [
+    "private_apple",
+    "tcc_privacy",
+    "endpoint_security",
+    "authentication",
+    "driverkit",
+    "system_extension",
+    "mach_lookup",
+    "keychain_access_group"
+  ],
+  "research_priority": {
+    "controlled_resource_sink": 10,
+    "unresolved_operation_authorization": 8,
+    "unresolved_resource_authorization": 5,
+    "write_or_ownership_sink": 5
+  },
+  "rules": [
+    {
+      "id": "privileged_service",
+      "weight": 20,
+      "description": "runs as root / system service"
+    },
+    {
+      "id": "exposes_ipc",
+      "weight": 20,
+      "description": "exposes a Mach / XPC service or socket"
+    },
+    {
+      "id": "private_entitlement",
+      "weight": 15,
+      "description": "possesses private / high-value entitlements"
+    },
+    {
+      "id": "auth_security_api",
+      "weight": 15,
+      "description": "uses authentication / Security.framework APIs"
+    },
+    {
+      "id": "account_credential",
+      "weight": 15,
+      "description": "interacts with account / credential subsystems"
+    },
+    {
+      "id": "filesystem_mutation",
+      "weight": 10,
+      "description": "filesystem mutation indicators"
+    },
+    {
+      "id": "installer_update",
+      "weight": 10,
+      "description": "installer / software-update functionality"
+    },
+    {
+      "id": "network",
+      "weight": 10,
+      "description": "network-facing surface"
+    },
+    {
+      "id": "tcc_privacy",
+      "weight": 15,
+      "description": "TCC / privacy subsystem interaction"
+    },
+    {
+      "id": "disabled_service",
+      "weight": -30,
+      "description": "job is disabled (launchd would not load it as configured)"
+    }
+  ],
+  "confidence_factors": {
+    "HIGH": 1.0,
+    "MEDIUM": 0.6,
+    "LOW": 0.3
+  },
+  "_note": "Sink rule weights are multiplied by the confidence of the supporting evidence (see models/evidence.py). Caller validation is not scored: absence of a static signal says nothing about the service, so it is reported on its own axis."
+}

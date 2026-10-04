@@ -1,0 +1,785 @@
+{
+  "sources": {
+    "xpc_dictionary_get_string": "string",
+    "xpc_dictionary_get_data": "data",
+    "xpc_dictionary_get_value": "object",
+    "xpc_dictionary_get_int64": "signed integer",
+    "xpc_dictionary_get_uint64": "unsigned integer",
+    "xpc_dictionary_get_bool": "boolean",
+    "xpc_array_get_*": "array element",
+    "xpc_dictionary_get_*": "dictionary field",
+    "mach_msg": "Mach message fields"
+  },
+  "replies": [
+    "xpc_dictionary_set_*",
+    "xpc_connection_send_message",
+    "xpc_connection_send_message_with_reply",
+    "mach_msg",
+    "replyWith*",
+    "completionHandler*"
+  ],
+  "identity_validation": [
+    "xpc_connection_get_audit_token",
+    "xpc_dictionary_get_audit_token",
+    "SecTaskCreateWithAuditToken",
+    "SecTaskCopyValueForEntitlement",
+    "SecCodeCopyGuestWithAttributes",
+    "SecCodeCheckValidity",
+    "SecStaticCodeCheckValidity",
+    "SecRequirementCreateWithString",
+    "audit_token_to_euid",
+    "audit_token_to_egid"
+  ],
+  "authorization": [
+    "AuthorizationCopyRights",
+    "AuthorizationRightGet",
+    "sandbox_check",
+    "sandbox_check_by_audit_token",
+    "xpc_connection_copy_entitlement_value",
+    "SecTaskCopyValueForEntitlement"
+  ],
+  "transforms": [
+    "CFStringCreate*",
+    "CFURLCreate*",
+    "CFURLCopy*",
+    "objc_retain",
+    "objc_autoreleaseReturnValue",
+    "objc_retainAutoreleasedReturnValue"
+  ],
+  "operations": [
+    {
+      "category": "filesystem",
+      "symbols": [
+        "unlink",
+        "unlinkat",
+        "remove",
+        "removefile",
+        "removeItemAtPath:"
+      ],
+      "operation": "delete file",
+      "candidate_capability": "FILE_DELETE_SINK_CANDIDATE",
+      "proven_primitive": "ARBITRARY_FILE_DELETE",
+      "post_condition": "FILE_DELETED",
+      "arguments": {
+        "unlink": {
+          "0": "path"
+        },
+        "unlinkat": {
+          "1": "path"
+        },
+        "removefile": {
+          "0": "path"
+        },
+        "removeItemAtPath:": {
+          "2": "path"
+        }
+      },
+      "required_control": [
+        "path"
+      ],
+      "impact": "A protected path may be deleted only if target selection and operation authorization are established.",
+      "research_value": 8
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "rename",
+        "renameat",
+        "renamex_np",
+        "renameatx_np",
+        "moveItemAtPath:",
+        "replaceItemAtURL:"
+      ],
+      "operation": "move file",
+      "candidate_capability": "FILE_MOVE_SINK_CANDIDATE",
+      "proven_primitive": "ARBITRARY_FILE_MOVE",
+      "post_condition": "FILE_MOVED",
+      "arguments": {
+        "rename": {
+          "0": "source_path",
+          "1": "destination_path"
+        },
+        "renameat": {
+          "1": "source_path",
+          "3": "destination_path"
+        },
+        "moveItemAtPath:": {
+          "2": "source_path",
+          "3": "destination_path"
+        }
+      },
+      "required_control": [
+        "source_path",
+        "destination_path"
+      ],
+      "impact": "Protected filesystem objects may be moved or replaced only if both relevant paths are controllable.",
+      "research_value": 8
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "copyfile",
+        "clonefile",
+        "truncate",
+        "ftruncate",
+        "createFileAtPath:",
+        "copyItemAtPath:"
+      ],
+      "operation": "write file",
+      "candidate_capability": "FILE_WRITE_SINK_CANDIDATE",
+      "proven_primitive": "ARBITRARY_FILE_WRITE",
+      "post_condition": "FILE_CONTENT_MODIFIED",
+      "arguments": {
+        "copyfile": {
+          "0": "source_path",
+          "1": "destination_path"
+        },
+        "clonefile": {
+          "0": "source_path",
+          "1": "destination_path"
+        },
+        "truncate": {
+          "0": "path",
+          "1": "length"
+        },
+        "ftruncate": {
+          "0": "file_descriptor",
+          "1": "length"
+        },
+        "createFileAtPath:": {
+          "2": "path"
+        },
+        "copyItemAtPath:": {
+          "2": "source_path",
+          "3": "destination_path"
+        }
+      },
+      "required_control_any": [
+        "path",
+        "destination_path",
+        "file_descriptor"
+      ],
+      "impact": "Protected data may change only if the target object and relevant write parameters are attacker influenced.",
+      "research_value": 9
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "open",
+        "openat",
+        "contentsAtPath:"
+      ],
+      "operation": "access file",
+      "candidate_capability": "FILE_ACCESS_SINK_CANDIDATE",
+      "proven_primitive": "PRIVILEGED_FILE_ACCESS",
+      "post_condition": "FILE_HANDLE_OBTAINED",
+      "arguments": {
+        "open": {
+          "0": "path",
+          "1": "flags"
+        },
+        "openat": {
+          "1": "path",
+          "2": "flags"
+        },
+        "contentsAtPath:": {
+          "2": "path"
+        }
+      },
+      "required_control": [
+        "path"
+      ],
+      "impact": "Open flags and subsequent descriptor use must be recovered before classifying read or write impact.",
+      "research_value": 4
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "chown",
+        "fchown",
+        "lchown"
+      ],
+      "operation": "change ownership",
+      "candidate_capability": "CHOWN_SINK_CANDIDATE",
+      "proven_primitive": "ARBITRARY_CHOWN",
+      "post_condition": "FILE_OWNER_CHANGED",
+      "arguments": {
+        "chown": {
+          "0": "path",
+          "1": "uid",
+          "2": "gid"
+        },
+        "fchown": {
+          "0": "file_descriptor",
+          "1": "uid",
+          "2": "gid"
+        },
+        "lchown": {
+          "0": "path",
+          "1": "uid",
+          "2": "gid"
+        }
+      },
+      "required_control_any": [
+        "path",
+        "file_descriptor"
+      ],
+      "impact": "Ownership changes are security-relevant only when the caller controls the target; UID/GID control is reported separately.",
+      "research_value": 8
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "chmod",
+        "fchmod",
+        "fchmodat",
+        "setAttributes:ofItemAtPath:"
+      ],
+      "operation": "change permissions",
+      "candidate_capability": "CHMOD_SINK_CANDIDATE",
+      "proven_primitive": "ARBITRARY_CHMOD",
+      "post_condition": "FILE_MODE_CHANGED",
+      "arguments": {
+        "chmod": {
+          "0": "path",
+          "1": "mode"
+        },
+        "fchmod": {
+          "0": "file_descriptor",
+          "1": "mode"
+        },
+        "fchmodat": {
+          "1": "path",
+          "2": "mode"
+        },
+        "setAttributes:ofItemAtPath:": {
+          "3": "path"
+        }
+      },
+      "required_control_any": [
+        "path",
+        "file_descriptor"
+      ],
+      "impact": "Access may change only when the target object and relevant mode are established.",
+      "research_value": 8
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "mkdir",
+        "mkdirat",
+        "createDirectoryAtPath:"
+      ],
+      "operation": "create directory",
+      "candidate_capability": "DIRECTORY_CREATE_SINK_CANDIDATE",
+      "proven_primitive": "PRIVILEGED_DIRECTORY_CREATE",
+      "post_condition": "DIRECTORY_CREATED",
+      "arguments": {
+        "mkdir": {
+          "0": "path",
+          "1": "mode"
+        },
+        "mkdirat": {
+          "1": "path",
+          "2": "mode"
+        },
+        "createDirectoryAtPath:": {
+          "2": "path"
+        }
+      },
+      "required_control": [
+        "path"
+      ],
+      "impact": "A protected directory may be created only if target selection is controlled.",
+      "research_value": 6
+    },
+    {
+      "category": "filesystem",
+      "symbols": [
+        "symlink",
+        "symlinkat",
+        "link",
+        "linkat",
+        "createSymbolicLinkAtPath:"
+      ],
+      "operation": "create filesystem link",
+      "candidate_capability": "FILESYSTEM_LINK_SINK_CANDIDATE",
+      "proven_primitive": "PRIVILEGED_FILESYSTEM_LINK",
+      "post_condition": "FILESYSTEM_LINK_CREATED",
+      "arguments": {
+        "symlink": {
+          "0": "source_path",
+          "1": "destination_path"
+        },
+        "symlinkat": {
+          "0": "source_path",
+          "2": "destination_path"
+        },
+        "link": {
+          "0": "source_path",
+          "1": "destination_path"
+        },
+        "linkat": {
+          "1": "source_path",
+          "3": "destination_path"
+        },
+        "createSymbolicLinkAtPath:": {
+          "2": "source_path",
+          "3": "destination_path"
+        }
+      },
+      "required_control_any": [
+        "source_path",
+        "destination_path"
+      ],
+      "impact": "A privileged link operation is security-relevant only when a pathname is caller influenced and the destination resource is not safely validated.",
+      "research_value": 7
+    },
+    {
+      "category": "execution",
+      "symbols": [
+        "execve",
+        "execv",
+        "execvp",
+        "execl*",
+        "posix_spawn",
+        "posix_spawnp",
+        "NSTask",
+        "system",
+        "popen"
+      ],
+      "operation": "launch process",
+      "candidate_capability": "PROCESS_EXECUTION_SINK_CANDIDATE",
+      "proven_primitive": "PRIVILEGED_PROCESS_EXECUTION",
+      "post_condition": "PROCESS_CREATED",
+      "arguments": {
+        "execve": {
+          "0": "executable",
+          "1": "argv",
+          "2": "environment"
+        },
+        "execv": {
+          "0": "executable",
+          "1": "argv"
+        },
+        "execvp": {
+          "0": "executable",
+          "1": "argv"
+        },
+        "posix_spawn": {
+          "1": "executable",
+          "2": "file_actions",
+          "3": "attributes",
+          "4": "argv",
+          "5": "environment"
+        },
+        "posix_spawnp": {
+          "1": "executable",
+          "2": "file_actions",
+          "3": "attributes",
+          "4": "argv",
+          "5": "environment"
+        },
+        "system": {
+          "0": "command"
+        },
+        "popen": {
+          "0": "command"
+        }
+      },
+      "required_control_any": [
+        "executable",
+        "command"
+      ],
+      "impact": "Privileged execution requires control of executable/command or an equivalent code-loading input; argument control alone is not enough.",
+      "research_value": 10
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecKeyCreateSignature"
+      ],
+      "operation": "produce signature",
+      "candidate_capability": "SIGNATURE_OPERATION_CANDIDATE",
+      "proven_primitive": "SIGNING_ORACLE",
+      "post_condition": "SIGNATURE_RETURNED",
+      "arguments": {
+        "SecKeyCreateSignature": {
+          "0": "key",
+          "1": "algorithm",
+          "2": "data"
+        }
+      },
+      "required_control": [
+        "data"
+      ],
+      "requires_reply": true,
+      "impact": "An oracle requires unauthorized influence over signed data plus evidence that the signature reaches the caller.",
+      "research_value": 8
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecKeyCreateDecryptedData"
+      ],
+      "operation": "decrypt data",
+      "candidate_capability": "DECRYPTION_OPERATION_CANDIDATE",
+      "proven_primitive": "DECRYPTION_ORACLE",
+      "post_condition": "PLAINTEXT_RETURNED",
+      "arguments": {
+        "SecKeyCreateDecryptedData": {
+          "0": "key",
+          "1": "algorithm",
+          "2": "ciphertext"
+        }
+      },
+      "required_control": [
+        "ciphertext"
+      ],
+      "requires_reply": true,
+      "impact": "An oracle requires caller-influenced ciphertext and proven return of plaintext.",
+      "research_value": 8
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecKeyCopyKeyExchangeResult"
+      ],
+      "operation": "perform key agreement",
+      "candidate_capability": "KEY_AGREEMENT_OPERATION_CANDIDATE",
+      "proven_primitive": "KEY_AGREEMENT_ORACLE",
+      "post_condition": "KEY_AGREEMENT_RESULT_RETURNED",
+      "arguments": {
+        "SecKeyCopyKeyExchangeResult": {
+          "0": "key",
+          "1": "algorithm",
+          "2": "peer_parameters"
+        }
+      },
+      "required_control": [
+        "peer_parameters"
+      ],
+      "requires_reply": true,
+      "impact": "Impact depends on caller control, reply flow and downstream acceptance of the result.",
+      "research_value": 7
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecKeyCopyExternalRepresentation"
+      ],
+      "operation": "export key material",
+      "candidate_capability": "KEY_EXPORT_OPERATION_CANDIDATE",
+      "proven_primitive": "PRIVATE_KEY_EXPORT",
+      "post_condition": "KEY_MATERIAL_RETURNED",
+      "arguments": {
+        "SecKeyCopyExternalRepresentation": {
+          "0": "key"
+        }
+      },
+      "required_control": [
+        "key"
+      ],
+      "requires_reply": true,
+      "requires_private_exportable_key": true,
+      "impact": "Private-key disclosure additionally requires a private exportable key; Secure Enclave-backed keys are generally non-exportable.",
+      "research_value": 10
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecKeyCopyPublicKey",
+        "SecKeyCopyAttributes",
+        "SecKeyGetBlockSize"
+      ],
+      "operation": "read key metadata",
+      "candidate_capability": "KEY_METADATA_OPERATION_CANDIDATE",
+      "proven_primitive": "KEY_METADATA_ACCESS",
+      "post_condition": "KEY_METADATA_RETURNED",
+      "arguments": {
+        "SecKeyCopyPublicKey": {
+          "0": "key"
+        },
+        "SecKeyCopyAttributes": {
+          "0": "key"
+        },
+        "SecKeyGetBlockSize": {
+          "0": "key"
+        }
+      },
+      "required_control": [
+        "key"
+      ],
+      "requires_reply": true,
+      "impact": "Metadata or public material is distinct from private-key disclosure.",
+      "research_value": 2
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecItemCopyMatching"
+      ],
+      "operation": "obtain credential or key reference",
+      "candidate_capability": "KEY_LOOKUP_OPERATION_CANDIDATE",
+      "proven_primitive": "KEY_REFERENCE_ACCESS",
+      "post_condition": "KEY_REFERENCE_RETURNED",
+      "arguments": {
+        "SecItemCopyMatching": {
+          "0": "query",
+          "1": "result_pointer"
+        }
+      },
+      "required_control": [
+        "query"
+      ],
+      "requires_reply": true,
+      "impact": "A key reference is not key material; ACL, result type and permitted operations remain separate questions.",
+      "research_value": 4
+    },
+    {
+      "category": "credential",
+      "framework": "Security",
+      "symbols": [
+        "SecItemAdd",
+        "SecItemUpdate",
+        "SecItemDelete"
+      ],
+      "operation": "modify credential storage",
+      "candidate_capability": "CREDENTIAL_MUTATION_SINK_CANDIDATE",
+      "proven_primitive": "CREDENTIAL_MODIFICATION",
+      "post_condition": "CREDENTIAL_RECORD_CHANGED",
+      "arguments": {
+        "SecItemAdd": {
+          "0": "attributes"
+        },
+        "SecItemUpdate": {
+          "0": "query",
+          "1": "attributes"
+        },
+        "SecItemDelete": {
+          "0": "query"
+        }
+      },
+      "required_control_any": [
+        "query",
+        "attributes"
+      ],
+      "impact": "Credential state changes require controlled record selection or attributes and operation authorization.",
+      "research_value": 7
+    },
+    {
+      "category": "identity",
+      "framework": "OpenDirectory",
+      "symbols": [
+        "ODRecordCreate*",
+        "ODNodeCreateRecord*",
+        "CSIdentityCreate*"
+      ],
+      "operation": "create account",
+      "candidate_capability": "ACCOUNT_CREATION_SINK_CANDIDATE",
+      "proven_primitive": "ACCOUNT_CREATION",
+      "post_condition": "ACCOUNT_CREATED",
+      "required_control_any": [
+        "record_name",
+        "attributes",
+        "argument_0"
+      ],
+      "impact": "Account creation requires attacker-selected identity data and operation authorization.",
+      "research_value": 9
+    },
+    {
+      "category": "identity",
+      "framework": "OpenDirectory",
+      "symbols": [
+        "ODRecordSetValue*",
+        "ODRecordAddValue*",
+        "ODRecordRemoveValue*"
+      ],
+      "operation": "modify account",
+      "candidate_capability": "ACCOUNT_MODIFICATION_SINK_CANDIDATE",
+      "proven_primitive": "ACCOUNT_MODIFICATION",
+      "post_condition": "ACCOUNT_CHANGED",
+      "required_control_any": [
+        "record",
+        "attribute",
+        "argument_0"
+      ],
+      "impact": "Privilege impact depends on the controlled record and attribute.",
+      "research_value": 8
+    },
+    {
+      "category": "identity",
+      "framework": "OpenDirectory",
+      "symbols": [
+        "ODRecordAddMember*",
+        "ODRecordRemoveMember*"
+      ],
+      "operation": "change group membership",
+      "candidate_capability": "GROUP_MEMBERSHIP_SINK_CANDIDATE",
+      "proven_primitive": "GROUP_MEMBERSHIP_CHANGE",
+      "post_condition": "GROUP_MEMBERSHIP_CHANGED",
+      "required_control_any": [
+        "member",
+        "group",
+        "argument_0"
+      ],
+      "impact": "Authorization impact depends on which member and group are controllable.",
+      "research_value": 9
+    },
+    {
+      "category": "identity",
+      "framework": "LocalAuthentication",
+      "symbols": [
+        "evaluatePolicy:",
+        "LAContext"
+      ],
+      "operation": "perform authentication",
+      "candidate_capability": "AUTHENTICATION_OPERATION_CANDIDATE",
+      "proven_primitive": "AUTHENTICATION_ORACLE",
+      "post_condition": "AUTHENTICATION_RESULT_RETURNED",
+      "requires_reply": true,
+      "required_control_any": [
+        "policy",
+        "argument_0"
+      ],
+      "impact": "Impact depends on reply flow and what downstream operation accepts the decision.",
+      "research_value": 6
+    },
+    {
+      "category": "identity",
+      "framework": "AuthenticationServices",
+      "symbols": [
+        "gss_init_sec_context",
+        "gss_accept_sec_context",
+        "krb5_get_init_creds*",
+        "krb5_get_credentials"
+      ],
+      "operation": "obtain or operate on identity token",
+      "candidate_capability": "TOKEN_OPERATION_CANDIDATE",
+      "proven_primitive": "TOKEN_ACCESS",
+      "post_condition": "TOKEN_RETURNED",
+      "requires_reply": true,
+      "required_control_any": [
+        "request_parameters",
+        "argument_0"
+      ],
+      "impact": "Impersonation requires disclosure, valid audience and downstream acceptance.",
+      "research_value": 7
+    },
+    {
+      "category": "identity",
+      "framework": "Kerberos",
+      "symbols": [
+        "gss_unwrap",
+        "krb5_c_decrypt",
+        "krb5_rd_priv"
+      ],
+      "operation": "decrypt protected identity material",
+      "candidate_capability": "TOKEN_DECRYPTION_OPERATION_CANDIDATE",
+      "proven_primitive": "TOKEN_DECRYPTION",
+      "post_condition": "TOKEN_PLAINTEXT_RETURNED",
+      "requires_reply": true,
+      "required_control_any": [
+        "ciphertext",
+        "argument_0"
+      ],
+      "impact": "Disclosure requires controlled protected input and proven plaintext reply flow.",
+      "research_value": 8
+    }
+  ],
+  "chains": [
+    {
+      "source": "ARBITRARY_FILE_WRITE",
+      "target": "PRIVILEGED_PROCESS_EXECUTION",
+      "precondition": "written path is consumed as privileged executable or configuration",
+      "missing": "prove a privileged consumer and trigger/reload path"
+    },
+    {
+      "source": "KEY_REFERENCE_ACCESS",
+      "target": "SIGNING_ORACLE",
+      "precondition": "the obtained reference permits signing",
+      "missing": "prove key identity, ACL, operation permission and returned signature"
+    },
+    {
+      "source": "SIGNING_ORACLE",
+      "target": "IDENTITY_IMPERSONATION_PRIMITIVE",
+      "precondition": "a downstream identity boundary accepts signatures from this key",
+      "missing": "identify verifier, accepted format, freshness and replay constraints"
+    },
+    {
+      "source": "TOKEN_ACCESS",
+      "target": "IDENTITY_IMPERSONATION_PRIMITIVE",
+      "precondition": "the token is returned and accepted by a relying party",
+      "missing": "prove disclosure, audience, validity and relying-party acceptance"
+    }
+  ],
+  "trusted_metadata_sources": [
+    "xpc_dictionary_get_audit_token",
+    "xpc_dictionary_get_remote_connection"
+  ],
+  "descriptor_returns": {
+    "open": {
+      "path_argument": 0
+    },
+    "openat": {
+      "path_argument": 1
+    }
+  },
+  "guard_success": {
+    "AuthorizationCopyRights": "zero",
+    "SecCodeCheckValidity": "zero",
+    "SecStaticCodeCheckValidity": "zero"
+  },
+  "guard_success_semantics": {
+    "AuthorizationCopyRights": "zero",
+    "SecCodeCheckValidity": "zero",
+    "SecStaticCodeCheckValidity": "zero",
+    "SecTaskCopyValueForEntitlement": "object_then_boolean"
+  },
+  "caller_profiles": {
+    "unsandboxed": {
+      "entry_reachability": "DECLARED",
+      "mach_lookup": "NOT_REQUIRED"
+    },
+    "sandboxed": {
+      "entry_reachability": "CONDITIONAL",
+      "mach_lookup": "UNKNOWN"
+    },
+    "entitled": {
+      "entry_reachability": "UNKNOWN"
+    }
+  },
+  "profile_predicates": {
+    "sandbox_check": {
+      "classification": "caller_sandbox_state",
+      "success_semantics": "UNKNOWN"
+    },
+    "sandbox_check_by_audit_token": {
+      "classification": "caller_sandbox_state",
+      "success_semantics": "UNKNOWN"
+    }
+  },
+  "dispatch_keys": [
+    "request",
+    "command",
+    "cmd",
+    "operation",
+    "function",
+    "action",
+    "method",
+    "message",
+    "opcode",
+    "selector",
+    "event",
+    "notification",
+    "type",
+    "kind"
+  ],
+  "dispatch_min_chain": 2
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "macOS-TBM 2.2 report envelope",
+  "description": "Envelope and provenance contract. Finding payloads remain extensible.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "tool", "provenance", "meta", "summary", "targets"],
+  "properties": {
+    "schema_version": {"const": "2.2"},
+    "generated_at": {"type": "string"},
+    "tool": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "required": ["tool_version", "source_build", "code_sha256", "host", "python_version", "rules_sha256"],
+      "properties": {
+        "tool_version": {"type": "string"},
+        "source_build": {"type": "string"},
+        "code_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "host": {"type": "object", "required": ["system", "release", "machine", "macos_build"]},
+        "python_version": {"type": "string"},
+        "r2pipe_version": {"type": ["string", "null"]},
+        "radare2_version": {"type": ["string", "null"]},
+        "rules_sha256": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+      }
+    },
+    "meta": {"type": "object", "properties": {"scan_options": {"type": "object"}}},
+    "summary": {"type": "object"},
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "service", "executable"],
+        "properties": {
+          "executable": {
+            "type": "object",
+            "required": ["path", "analyzed", "identity"],
+            "properties": {
+              "path": {"type": "string"},
+              "analyzed": {"type": "boolean"},
+              "identity": {
+                "type": "object",
+                "properties": {
+                  "status": {"enum": ["STABLE", "UNVERIFIED_OR_CHANGED"]},
+                  "before_analysis": {"type": "object"},
+                  "after_analysis": {"type": "object"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

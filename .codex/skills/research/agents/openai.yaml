@@ -1,0 +1,6 @@
+interface:
+  display_name: "Daemon research (macOS-TBM)"
+  short_description: "Take one macOS daemon apart with macOS-TBM"
+  default_prompt: "Use $research to dissect the named launchd daemon with macOS-TBM: what it is, what it exposes, who reaches it, and how it validates callers."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,4 @@
+include AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md
+recursive-include docs *.md *.json
+recursive-include tests *.py *.json *.c
+recursive-include tools *.py

@@ -1,0 +1,79 @@
+{
+  "_doc": "RCE correlation rules: network ingress x untrusted-data parser surface in privileged daemons.",
+  "network_ingress": {
+    "_doc": "How remote data can enter the process.",
+    "launchd_socket_network_keys": ["SockServiceName", "Bonjour"],
+    "listener_apis": [
+      "bind", "listen", "accept", "accept4",
+      "nw_listener_create", "nw_listener_create_with_port",
+      "nw_listener_create_on_endpoint", "nw_listener_set_new_connection_handler",
+      "CFSocketCreate", "CFSocketCreateWithSocketSignalingAndProtocol", "CFSocketCreateRunLoopSource",
+      "CFNetServiceRegister", "CFNetServiceRegisterWithOptions",
+      "DNSServiceRegister", "DNSServiceRegisterRecord",
+      "IOBluetooth*Register*"
+    ],
+    "listener_frameworks": ["Network.framework"],
+    "client_apis": [
+      "connect", "connectx",
+      "nw_connection_create", "nw_connection_create_with_endpoint", "nw_connection_set_state_changed_handler",
+      "CFReadStreamCreateForHTTPRequest", "CFHTTPMessageCreateRequest",
+      "CFHostCreateWithAddress"
+    ],
+    "client_frameworks": ["CFNetwork"]
+  },
+  "parsers": {
+    "_doc": "Untrusted-data parsing APIs grouped by memory-corruption surface complexity. HIGH = historically bug-rich structured formats parsed from raw buffers.",
+    "high": {
+      "archive": [
+        "xar_open*", "xar_extract_*", "BOMCopier*", "BOMTree*", "BOMStruct*",
+        "AppleArchive*", "AAByteStream*", "AAArchiveStream*",
+        "BZ2_bzDecompress*", "inflate*", "inflateInit*", "uncompress",
+        "compression_decode_buffer*", "compression_decode_stream*",
+        "lzma_*", "lzfse_*"
+      ],
+      "code_signature": [
+        "SecStaticCodeCreateWithPath", "SecStaticCodeCreateWithURL",
+        "SecStaticCodeCheckValidity*", "SecCodeCopySigningInformation",
+        "SecCodeCopyGuestWithAttributes", "SecCodeSignerCreate"
+      ],
+      "certificate": [
+        "SecCertificateCreateWithData", "SecAsn1Decode*", "SecAsn1Decoder*",
+        "SecTrustCreateWithCertificates", "SecTrustEvaluateWithError"
+      ],
+      "image": [
+        "CGImageSourceCreateWithData", "CGImageSourceCreateWithURL",
+        "CGImageSourceCreateWithDataProvider", "CGImageSourceCopyPropertiesAtIndex"
+      ]
+    },
+    "medium": {
+      "property_list": [
+        "CFPropertyListCreateWithData", "CFPropertyListCreateFromXMLData",
+        "CFPropertyListCreateFromStream", "CFPreferencesCreateWithProperties*"
+      ],
+      "xml_json": [
+        "xmlReadMemory", "xmlParseDoc", "xmlReadFile", "xmlParseMemory",
+        "JSONSerialization*", "cJSON_*", "yajl_*"
+      ],
+      "database": [
+        "sqlite3_open*", "sqlite3_open_v2", "sqlite3_prepare*"
+      ],
+      "protobuf": [
+        "protobuf_c_*", "GPBMessage*", "SwiftProtobuf*"
+      ]
+    }
+  },
+  "weights": {
+    "network_listener": 25,
+    "network_listener_api": 15,
+    "network_client": 10,
+    "high_complexity_parser": 20,
+    "medium_complexity_parser": 8,
+    "privileged_process": 15,
+    "root_listener_high_parser": 15,
+    "caller_validation_none_observed": 10
+  },
+  "thresholds": {
+    "high": 65,
+    "medium": 35
+  }
+}

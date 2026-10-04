@@ -1,0 +1,92 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install linters
+        run: python3 -m pip install "ruff>=0.9" "mypy>=1.11"
+      - name: ruff
+        run: ruff check .
+      - name: mypy (advisory)
+        continue-on-error: true
+        run: mypy
+
+  unit:
+    name: unit tests (macOS)
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -t tests -v
+      - name: Coverage report
+        if: matrix.python-version == '3.12'
+        run: |
+          python3 -m pip install "coverage>=7.6"
+          python3 -m coverage run -m unittest discover -s tests -t tests
+          python3 -m coverage report
+
+  smoke:
+    name: end-to-end smoke scan
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan the runner's own launchd daemons
+        run: python3 tbm.py scan --scope daemons --output ./results
+      - name: Check the reports were produced and parse
+        run: |
+          python3 - <<'PY'
+          import json, os
+          report = json.load(open("results/report.json"))
+          assert report["targets"], "no targets discovered"
+          assert os.path.getsize("results/report.html") > 10_000
+          print(f"{len(report['targets'])} targets, "
+                f"{sum(1 for t in report['targets'] if not t['service']['enabled'])} disabled")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: results/report.html
+
+  package:
+    name: isolated wheel and research contracts
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build source distribution and wheel
+        run: |
+          python3 -m pip install build jsonschema
+          python3 -m build
+      - name: Verify wheel outside checkout without optional dependencies
+        run: python3 tools/verify_wheel.py dist/*.whl --schema docs/report-schema.json
+      - name: Evaluate evidence contracts and compiled native fixtures
+        run: python3 tools/evaluate_research.py --output research-evaluation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-release-validation
+          path: |
+            dist/*
+            research-evaluation.json

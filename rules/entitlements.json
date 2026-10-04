@@ -1,0 +1,99 @@
+{
+  "categories": {
+    "private_apple": {
+      "description": "Private Apple entitlements (com.apple.private.*) — Apple-internal capability gates",
+      "sensitivity": 15
+    },
+    "tcc_privacy": {
+      "description": "TCC / privacy-related capability (camera, mic, screen, contacts, location, etc.)",
+      "sensitivity": 15
+    },
+    "keychain_access_group": {
+      "description": "Keychain access groups",
+      "sensitivity": 12
+    },
+    "security": {
+      "description": "com.apple.security.* hardened-runtime / sandbox entitlements",
+      "sensitivity": 5
+    },
+    "authentication": {
+      "description": "Authentication-related capabilities",
+      "sensitivity": 14
+    },
+    "network": {
+      "description": "Network client/server capabilities",
+      "sensitivity": 8
+    },
+    "system_extension": {
+      "description": "System Extension capabilities",
+      "sensitivity": 12
+    },
+    "endpoint_security": {
+      "description": "EndpointSecurity client capability",
+      "sensitivity": 15
+    },
+    "driverkit": {
+      "description": "DriverKit / dext capabilities",
+      "sensitivity": 14
+    },
+    "mach_lookup": {
+      "description": "Mach service lookup / temporary-exception lookup rights",
+      "sensitivity": 13
+    },
+    "temporary_exceptions": {
+      "description": "Sandbox temporary exceptions",
+      "sensitivity": 10
+    },
+    "sandbox": {
+      "description": "App sandbox and sandbox-related flags",
+      "sensitivity": 4
+    },
+    "other": {
+      "description": "Unclassified entitlement",
+      "sensitivity": 1
+    }
+  },
+  "rules": [
+    { "category": "private_apple", "match": "com.apple.private.", "type": "prefix" },
+    { "category": "private_apple", "match": "com.apple.rootless.", "type": "prefix" },
+    { "category": "tcc_privacy", "match": "com.apple.private.tcc.", "type": "prefix" },
+    { "category": "tcc_privacy", "match": ".tcc.", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.device-information.user-assigned-device-name", "type": "exact" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.location", "type": "prefix" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.camera", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.microphone", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.screen-capture", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.contacts", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.media", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.siri", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.homekit", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.usernotifications", "type": "contains" },
+    { "category": "tcc_privacy", "match": "com.apple.developer.authentication-services", "type": "contains" },
+    { "category": "keychain_access_group", "match": "keychain-access-groups", "type": "exact" },
+    { "category": "keychain_access_group", "match": "keychain-access-group", "type": "contains" },
+    { "category": "keychain_access_group", "match": "com.apple.keychain", "type": "prefix" },
+    { "category": "authentication", "match": "com.apple.private.authentication", "type": "prefix" },
+    { "category": "authentication", "match": "com.apple.developer.authentication-services", "type": "prefix" },
+    { "category": "authentication", "match": "com.apple.private.LocalAuthentication", "type": "prefix" },
+    { "category": "authentication", "match": ".auth", "type": "contains" },
+    { "category": "network", "match": "com.apple.security.network.", "type": "prefix" },
+    { "category": "network", "match": "com.apple.private.network", "type": "prefix" },
+    { "category": "network", "match": "com.apple.developer.networking.", "type": "prefix" },
+    { "category": "network", "match": "com.apple.private.ne.", "type": "prefix" },
+    { "category": "system_extension", "match": "com.apple.developer.system-extension", "type": "prefix" },
+    { "category": "system_extension", "match": "com.apple.system-extension", "type": "prefix" },
+    { "category": "endpoint_security", "match": "com.apple.developer.endpoint-security", "type": "prefix" },
+    { "category": "endpoint_security", "match": "com.apple.private.endpoint-security", "type": "prefix" },
+    { "category": "endpoint_security", "match": ".endpointsecurity", "type": "contains" },
+    { "category": "driverkit", "match": "com.apple.developer.driverkit", "type": "prefix" },
+    { "category": "driverkit", "match": ".driverkit", "type": "contains" },
+    { "category": "driverkit", "match": "com.apple.developer.driver", "type": "prefix" },
+    { "category": "mach_lookup", "match": "com.apple.security.temporary-exception.mach-lookup.", "type": "prefix" },
+    { "category": "mach_lookup", "match": "mach-lookup", "type": "contains" },
+    { "category": "temporary_exceptions", "match": "com.apple.security.temporary-exception.", "type": "prefix" },
+    { "category": "sandbox", "match": "com.apple.security.app-sandbox", "type": "exact" },
+    { "category": "sandbox", "match": "com.apple.private.security", "type": "prefix" },
+    { "category": "sandbox", "match": "com.apple.security.sandbox", "type": "prefix" },
+    { "category": "security", "match": "com.apple.security.", "type": "prefix" }
+  ]
+}

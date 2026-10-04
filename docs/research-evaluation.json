@@ -1,0 +1,192 @@
+{
+  "evaluation_kind": "AUTHORED_CONTRACT_FIXTURES",
+  "limitations": [
+    "Not a real-daemon precision/recall benchmark",
+    "r2 responses are authored, not captured from installed radare2",
+    "Compiled native fixtures use simulated launchd metadata and O0 only"
+  ],
+  "provenance": {
+    "tool_version": "0.1.0",
+    "code_sha256": "f65f60fb4bb2a02507d839a9076763ed0da05836744cda78c9c486c72556fa88",
+    "source_build": "git:9ff4655",
+    "host": {
+      "system": "Darwin",
+      "release": "25.3.0",
+      "macos_version": "26.3.1",
+      "macos_build": "25D2128",
+      "machine": "arm64"
+    },
+    "python_version": "3.14.3",
+    "r2pipe_version": null,
+    "radare2_version": null,
+    "rules_sha256": {
+      "capabilities.json": "b3dddc207606ee7404e0a28645ac6f365e59939049e319a5a35e15df483b2a8d",
+      "entitlements.json": "516cbdf05effe2f340514928a6684c52fa77a5e9b1ec50de4e18fb0ca4e9325f",
+      "lpe.json": "d9eb8e15da79a9109eb5cc403d72d8d243588f439307dadf566736b9971ff28b",
+      "rce.json": "4e3765fec332c4f93821b1c29d623f9bbf1d79a3d76ff56c636f94e8e1550eef",
+      "scoring.json": "2ef1e99000d0d76dc7cc6aa613f32bb6365dfd0652183043d32eb688a418f911",
+      "signals.json": "d0bf5b45d26b052a91b6924dc5494819a9163e686f1fd4f29738c026725542a1"
+    },
+    "rules_hash_encoding": "canonical-json-sort-keys"
+  },
+  "native_binaries": {
+    "status": "COMPLETE",
+    "cases": [
+      {
+        "arch": "arm64",
+        "name": "controlled_path",
+        "expected": "CONTROLLED_SINK",
+        "observed": [
+          "CONTROLLED_SINK"
+        ],
+        "passed": true,
+        "binary_sha256": "2157328b48fb5b4e51ef540b13db97267649e528bd5f6bc6922666b357bd6946",
+        "unknown_reasons": []
+      },
+      {
+        "arch": "arm64",
+        "name": "constant_path",
+        "expected": "REACHABLE_SINK",
+        "observed": [
+          "REACHABLE_SINK"
+        ],
+        "passed": true,
+        "binary_sha256": "d8aaf2f51c6cc3425ea8a120cc5d89c285cbb2c4b229760d2f576f8ea797e897",
+        "unknown_reasons": []
+      },
+      {
+        "arch": "arm64",
+        "name": "wrapper_path",
+        "expected": "CONTROLLED_SINK",
+        "observed": [
+          "CONTROLLED_SINK"
+        ],
+        "passed": true,
+        "binary_sha256": "6766c606b7d8f4057ab7c7ee800823a51d7632737107b8ea396a227da04699df",
+        "unknown_reasons": []
+      },
+      {
+        "arch": "x86_64",
+        "name": "controlled_path",
+        "expected": "CONTROLLED_SINK",
+        "observed": [
+          "CONTROLLED_SINK"
+        ],
+        "passed": true,
+        "binary_sha256": "47ab33ede1e4e928c47afa212a4c2dfa42606bfb30fa8ec2f285b2311f4ceb3e",
+        "unknown_reasons": []
+      },
+      {
+        "arch": "x86_64",
+        "name": "constant_path",
+        "expected": "REACHABLE_SINK",
+        "observed": [
+          "REACHABLE_SINK"
+        ],
+        "passed": true,
+        "binary_sha256": "f5185c67780cd3ea765c6e3d6c5f4b59ee057a9258722f809c406ad467a11288",
+        "unknown_reasons": []
+      },
+      {
+        "arch": "x86_64",
+        "name": "wrapper_path",
+        "expected": "SINK_CANDIDATE",
+        "observed": [
+          "SINK_CANDIDATE"
+        ],
+        "passed": true,
+        "binary_sha256": "7c349b6f1c4c97d5b8588a3264460249a047f15643540b183e911f4d1404bcb6",
+        "unknown_reasons": [
+          "UNKNOWN_NO_CALL_PATH"
+        ]
+      }
+    ],
+    "limitations": [
+      "O0 fixtures only; launchd identity is simulated",
+      "No runtime operation, authorization or post-condition tested",
+      "x86_64 wrapper return remains unresolved"
+    ]
+  },
+  "r2_cases": [
+    {
+      "name": "direct_call",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "name": "data_reference_is_not_call",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "code_reference_is_not_call",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "indirect_reference_unresolved",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "graph_reference_outside_text",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "sink_data_reference",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "source_data_reference",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "handler_name_is_not_proof",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "address_without_sink_xref",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "exact_sink_address",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "name": "same_function_source_before_sink",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "name": "same_function_source_after_sink",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "name": "unreferenced_function",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    }
+  ],
+  "contract_tests_run": 71,
+  "contract_tests_passed": true
+}
