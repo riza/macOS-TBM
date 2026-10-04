@@ -35,6 +35,16 @@ entitlements and Mach/XPC signals into a review queue, per-service dossiers
 and a trust-boundary graph. It helps researchers choose what to investigate
 and follow the evidence into a disassembler.
 
+## Preview
+
+### HTML report
+
+![macOS-TBM HTML report demo](docs/images/tbm-report.gif)
+
+### Terminal dashboard
+
+![macOS-TBM terminal dashboard demo](docs/images/tbm-tui.gif)
+
 ## Research beta
 
 This project is a **research beta**. Findings are research leads that need
